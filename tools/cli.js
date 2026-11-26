@@ -10,7 +10,7 @@ for (let i = 0; i < args.length; i++) {
 }
 if (!files.length) { console.error("usage: node tools/cli.js <WoWCombatLog.txt> [--player Name] [--bonus N (default: worked out from the log)] [--json out.json]"); process.exit(1); }
 (async () => {
-  const an = new W.Analyzer(SPELLS);
+  const an = new W.Analyzer(SPELLS, TALENTS);
   for (const f of files) {
     const rl = readline.createInterface({ input: fs.createReadStream(f, { encoding: "utf8" }), crlfDelay: Infinity });
     for await (const line of rl) an.line(line);

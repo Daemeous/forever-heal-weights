@@ -64,8 +64,10 @@
     };
   }
 
-  function Analyzer(spellTable) {
+  // talentTable (optional, docs/talents.js): lets the reader tell healing specs from off-specs as each fight starts
+  function Analyzer(spellTable, talentTable) {
     this.S = spellTable.spells;
+    this.TAL = talentTable || null;
     this.meta = spellTable.meta;
     this.players = {};        // guid -> player
     this.owner = {};          // pet/totem guid -> owner guid
@@ -73,6 +75,21 @@
     this.enc = null;          // open encounter {idx, name, start}
     this.lines = 0; this.t0 = null; this.tLast = null;
   }
+
+  // a spec is a healing spec if any of its talents boosts healing (Spiritual Healing, Gift of Nature, Purification,
+  // Healing Light, Improved Renew, ...); unknown talents or no talent table -> assume healing
+  Analyzer.prototype.isOffspec = function (talents) {
+    var TAL = this.TAL;
+    if (!TAL || !talents || !talents.length) return false;
+    for (var i = 0; i < talents.length; i++) {
+      var ti = TAL.entries[talents[i].entry];
+      if (ti == null) continue;
+      var T = TAL.talents[ti], r = T.r[Math.min(talents[i].rank, T.r.length) - 1] || {};
+      // only healing-only talents count: Twin Disciplines / Genesis boost damage too and turn up in damage specs
+      if ((r.heal || []).some(function (h) { return !h.instant && !h.periodic; })) return false;
+    }
+    return true;
+  };
 
   Analyzer.prototype.player = function (guid, name) {
     var p = this.players[guid];
@@ -83,13 +100,22 @@
         enc: {},             // encounter idx -> bucket
         chain: {},           // sid -> open chain group
         last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], critMult: 1.5,
+        offspec: false, off: newBucket("off", "Off-spec", this.tLast), offEnc: {},
       };
     }
     if (name && p.name === guid) p.name = name;
+    if (p.infos.length === 0 && this.pendingInfo && this.pendingInfo[guid]) {
+      p.infos = this.pendingInfo[guid]; delete this.pendingInfo[guid];
+      p.info = p.infos[p.infos.length - 1].stats; p.offspec = this.isOffspec(p.infos[p.infos.length - 1].talents);
+    }
     return p;
   };
 
   Analyzer.prototype.buckets = function (p, t) {
+    if (p.offspec) {                 // off-spec (e.g. Shadow): keep it out of every total, just note the fight
+      if (this.enc) p.offEnc[this.enc.idx] = true;
+      return [p.off];
+    }
     var b = [p.all];
     if (this.enc) {
       var e = p.enc[this.enc.idx];
@@ -156,7 +182,7 @@
     if (E.type === "info") {   // several per log (one per pull): keep them all, detect() picks the healing spec
       var rec = { t: t, stats: E.stats, talents: E.talents || [] };
       var pi = this.players[E.src];
-      if (pi) { pi.info = E.stats; pi.infos.push(rec); }
+      if (pi) { pi.info = E.stats; pi.infos.push(rec); pi.offspec = this.isOffspec(rec.talents); }
       else ((this.pendingInfo = this.pendingInfo || {})[E.src] = this.pendingInfo[E.src] || []).push(rec);
       return;
     }
@@ -448,7 +474,12 @@
       whole: evaluate(an, p, p.all, opt, lam),
       bosses: bossRow ? Object.assign(evaluate(an, p, bosses, opt, lam), { duration: bossDur }) : null,
       trash: evaluate(an, p, p.trash, opt, lam),
-      encounters: encs.map(function (b) { var r = evaluate(an, p, b, opt, lam); r.lowMana = b.minMana <= 0.2; return r; }),
+      encounters: encs.map(function (b) { var r = evaluate(an, p, b, opt, lam); r.lowMana = b.minMana <= 0.2; return r; })
+        .concat(Object.keys(p.offEnc).filter(function (i) { return !p.enc[i]; }).map(function (i) {
+          var e = an.encounters[i];
+          return { label: e.name, kill: e.kill, start: e.start, end: e.end, duration: e.end - e.start, offspec: true, healing: false,
+                   eff: 0, over: 0, overPct: 0, minMana: 1, hpm: 0 };
+        })).sort(function (a, b) { return a.start - b.start; }),
       realCost: p.realCost,
     };
   }

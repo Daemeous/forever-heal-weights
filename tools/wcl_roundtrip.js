@@ -5,7 +5,7 @@ const W=require(R+'engine.js'),S=require(R+'spells.js'),C=require(R+'wcl.js');
 const F=process.argv[2];
 const G=process.argv[3];
 // raw path, but only lines involving G (same data the API filter returns) + encounters
-const a1=new W.Analyzer(S); const events=[]; const ids={}, actors=[]; const ab={};
+const T=require(R+'talents.js');const a1=new W.Analyzer(S,T); const events=[]; const ids={}, actors=[]; const ab={};
 let T0=null; const fights=[]; let open=null;
 function id(g,name){ if(!(g in ids)){ids[g]=actors.length+1; actors.push({id:ids[g],name:(name||g).split('-')[0],server:(name||'').split('-')[1]||null,type:g.startsWith('Player-')?'Player':'NPC',subType:'Priest',petOwner:null});} return ids[g]; }
 for (const line of fs.readFileSync(F,'utf8').split('\n')) {
@@ -24,14 +24,15 @@ for (const line of fs.readFileSync(F,'utf8').split('\n')) {
   if(cap.type==='heal'){Object.assign(e,{type:'heal',amount:cap.amount-cap.over,overheal:cap.over,hitType:cap.crit?2:1,tick:cap.periodic||undefined}); if(cap.maxHp){e.resourceActor=2;e.hitPoints=cap.hp;e.maxHitPoints=cap.maxHp;}}
   else if(cap.type==='cast'){e.type='cast'; if(e.classResources) e.classResources[0].cost=cap.cost;}
   else if(cap.type==='energize'){Object.assign(e,{type:'resourcechange',resourceChange:cap.amount,waste:cap.over,resourceChangeType:+cap.ptype});}
+  else if(cap.type==='absorb'){Object.assign(e,{type:'absorbed',amount:cap.amount}); ab[cap.sid]=cap.spell;}
   else if(cap.type==='death') e.type='death'; else if(cap.type==='summon') e.type='summon';
-  else if(cap.type==='info'){Object.assign(e,{type:'combatantinfo',intellect:cap.stats.int,spirit:cap.stats.spi});}
+  else if(cap.type==='info'){Object.assign(e,{type:'combatantinfo',intellect:cap.stats.int,spirit:cap.stats.spi,talents:cap.talents.map(x=>({entryID:+x.entry,rank:x.rank}))});}
   else e.type='damage';
   events.push(e);
 }
 a1.finish();
 const rep={code:'x',startTime:T0,endTime:T0+events[events.length-1].timestamp,fights,masterData:{actors,abilities:Object.entries(ab).map(([g,n])=>({gameID:+g,name:n}))}};
-const a2=C.feed(new W.Analyzer(S),rep,events).finish();
+const a2=C.feed(new W.Analyzer(S,T),rep,events).finish();
 const g2='Player-'+ids[G];
 const o=W.defaults('Priest'); o.bonus=405;
 const r1=W.analyse(a1,G,o), r2=W.analyse(a2,g2,o);

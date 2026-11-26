@@ -20,7 +20,7 @@
     var files = Array.prototype.slice.call(list || []).sort(function (a, b) { return a.name < b.name ? -1 : 1; });
     if (!files.length) return;
     var total = files.reduce(function (s, f) { return s + f.size; }, 0), done = 0, t0 = performance.now();
-    an = new W.Analyzer(FOREVER_SPELLS);
+    an = new W.Analyzer(FOREVER_SPELLS, window.FOREVER_TALENTS);
     $("progress").style.display = "block"; $("setup").classList.add("hidden"); $("results").classList.add("hidden");
     var CH = 8 << 20, fi = 0, pos = 0, rest = "", dec = new TextDecoder("utf-8");
     status("Reading " + files.map(function (f) { return f.name; }).join(", ") + "…");
@@ -119,7 +119,7 @@
       status("Downloaded " + n.toLocaleString() + " events…");
     }).then(function (events) {
       wclSample(rep, events);
-      an = WCL.feed(new W.Analyzer(FOREVER_SPELLS), rep, events).finish();
+      an = WCL.feed(new W.Analyzer(FOREVER_SPELLS, window.FOREVER_TALENTS), rep, events).finish();
       var only = W.healers(an).filter(function (x) { return x.guid === "Player-" + id; });
       var secs = ((performance.now() - t0) / 1000).toFixed(1);
       if (showHealers(only)) status("Read " + events.length.toLocaleString() + " events and " + an.encounters.length + " boss pulls in " + secs + " s.");
@@ -239,7 +239,7 @@
       var cells = e.healing ? STATS.slice(1).map(function (s) {
         var v = e[view][s[0]], m = max[s[0]] || 1;
         return '<td class="cell"><div class="b" style="width:' + Math.min(100, 100 * v / m).toFixed(0) + '%"></div><span>' + v.toFixed(2) + "</span></td>";
-      }).join("") : '<td colspan="4" class="muted" style="text-align:left">not healing (no healer-spell heals)</td>';
+      }).join("") : '<td colspan="4" class="muted" style="text-align:left">' + (e.offspec ? "off-spec (no healing talents): left out of every total" : "not healing (no healer-spell heals)") + "</td>";
       rows.push("<tr" + (dim ? ' class="dim"' : "") + '><td class="enc">' + esc(e.label) + ' <span class="muted">' + tod + "</span>" + tags + "</td><td>" + fmtT(e.duration) +
         "</td><td>" + fmtK(e.eff) + "</td><td>" + pct(e.overPct) + "</td><td>" + pct(e.minMana) + "</td>" + cells + "</tr>");
     });
