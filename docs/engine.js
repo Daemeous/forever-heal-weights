@@ -63,7 +63,8 @@
       casts: {},        // name|loggedCost -> count
       absorbs: {},      // absorb spell name -> amount (counted as healing done)
       energ: {},        // name -> [amount, count]
-      tIn: 0, tOut: 0, drains: 0, full: false, minMana: 1, deaths: 0, active: 0,
+      tIn: 0, tOut: 0, drains: 0, full: false, minMana: 1, deaths: 0,
+      active: 0, lastCast: null,   // seconds spent casting (gaps between casts, up to 5 sec each): the rate base for procs
     };
   }
 
@@ -115,7 +116,7 @@
         guid: guid, name: name || guid, cls: {}, info: null,
         sets: {}, cur: null, all: null, trash: null, enc: null,
         chain: {},           // sid -> open chain group
-        last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], hlB: [], critMult: 1.5,
+        last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], hlB: [], hlK: [], critMult: 1.5,
         offEnc: {}, healSigs: null, maxSeen: {},
       };
       this.useSet(p, null);
@@ -254,10 +255,10 @@
     // the value of +crit for this heal depends on how big this healer's crits are (x1.5, more with talents such as
     // Holy Power), which is only known at the end: keep what it needs and work it out in finish()
     p.hl.push(h.a, h.o, h.crit ? 1 : 0, h.max > 0 ? Math.max(0, h.max - h.hp) : -1);
-    p.hlB.push(h.b);
+    p.hlB.push(h.b); p.hlK.push(key);
     for (var i = 0; i < h.b.length; i++) {
       var b = h.b[i], r = b.heals[key];
-      if (!r) r = b.heals[key] = { sid: h.sid, name: h.name, p: h.p, idx: h.idx, n: 0, nc: 0, ncSum: 0, cSum: 0, okNC: 0, okC: 0, eff: 0, over: 0, crits: 0 };
+      if (!r) r = b.heals[key] = { sid: h.sid, name: h.name, p: h.p, idx: h.idx, n: 0, nc: 0, ncSum: 0, cSum: 0, okNC: 0, okC: 0, eff: 0, over: 0, crits: 0, critD: 0 };
       r.n++; r.eff += h.a - h.o; r.over += h.o;
       if (h.crit) { r.crits++; r.cSum += h.a; if (h.o === 0) r.okC++; }
       else { r.nc++; r.ncSum += h.a; if (h.o === 0) r.okNC++; }
@@ -269,7 +270,11 @@
     var t = E.t, cost = E.cost || 0, m = E.adv.mana, x = E.adv.max;
     p.dead = false;
     var b = this.buckets(p, t), key = E.spell + "|" + cost;
-    for (var i = 0; i < b.length; i++) b[i].casts[key] = (b[i].casts[key] || 0) + 1;
+    for (var i = 0; i < b.length; i++) {
+      b[i].casts[key] = (b[i].casts[key] || 0) + 1;
+      b[i].active += b[i].lastCast != null ? Math.max(0, Math.min(5, t - b[i].lastCast)) : 1.5;
+      b[i].lastCast = t;
+    }
     this.reading(p, t, m, x, true);
     if (cost > 0) { p.lastSpend = t; p.pend = { t: t, key: key, m: m }; }
     // drains: whole log = full (>=95%) -> nearly empty (<=10%) cycles; encounter / trash = ever <=10%
@@ -339,9 +344,9 @@
         var a = H[q], o = H[q + 1], c = H[q + 2], miss = H[q + 3], cd = 0;
         if (c) cd = o === 0 ? a * (m - 1) / m : Math.max(0, (a - o) - a / m);
         else if (o === 0 && miss >= 0) cd = Math.min((m - 1) * a, miss);
-        if (cd) p.hlB[hb].forEach(function (bk) { bk.critD += cd; });
+        if (cd) p.hlB[hb].forEach(function (bk) { bk.critD += cd; var hr = bk.heals[p.hlK[hb]]; if (hr) hr.critD += cd; });
       }
-      p.hl = []; p.hlB = [];
+      p.hl = []; p.hlB = []; p.hlK = [];
       // the healing-spec totals; fights played only in an off-spec are just noted
       if (healing.length === 1) { p.all = healing[0].all; p.trash = healing[0].trash; p.enc = healing[0].enc; }
       else {
@@ -417,24 +422,24 @@
   function evaluate(an, p, bucket, opt, lamRef) {
     var S = an.S, B = opt.bonus;
     var healD = 0, m = p.critMult || 1.5, spiritHeal = 0, spells = {}, healEff = 0, healOver = 0;
-    function sp(n) { return spells[n] || (spells[n] = { name: n, casts: 0, mana: 0, eff: 0, over: 0, hits: 0, crits: 0, absorb: 0 }); }
+    function sp(n) { return spells[n] || (spells[n] = { name: n, casts: 0, mana: 0, eff: 0, over: 0, hits: 0, crits: 0, absorb: 0, critD: 0 }); }
     for (var key in bucket.heals) {
       var r = bucket.heals[key], ref = p.all.heals[key] || r, sd = S[r.sid];
       healD += perPoint(S, ref, B, m) * (r.okNC + m * r.okC);
       if (sd && sd.spirit) spiritHeal += r.okNC + m * r.okC;      // Bloom: heals for the Druid's Spirit
       if (!sd) continue;                                           // potions, trinkets, other players' procs
       healEff += r.eff; healOver += r.over;
-      var x = sp(r.name); x.eff += r.eff; x.over += r.over; x.hits += r.n; x.crits += r.crits;
+      var x = sp(r.name); x.eff += r.eff; x.over += r.over; x.hits += r.n; x.crits += r.crits; x.critD += r.critD || 0;
     }
     var absorbed = 0;
     for (var abn in bucket.absorbs) { absorbed += bucket.absorbs[abn]; sp(abn).absorb += bucket.absorbs[abn]; sp(abn).eff += bucket.absorbs[abn]; }
-    var spent = 0, spentHeal = 0;
+    var spent = 0, spentHeal = 0, castsByName = {}, nCasts = 0, healCasts = 0;
     for (var ck in bucket.casts) {
       var nm = ck.slice(0, ck.lastIndexOf("|")), logged = +ck.slice(ck.lastIndexOf("|") + 1);
       var real = p.realCost[ck] != null ? p.realCost[ck] : logged;
       var mc = real * bucket.casts[ck];
-      spent += mc;
-      if (EXTRA_HEAL_CASTS[nm] || hasHealName(p, nm)) { spentHeal += mc; var y = sp(nm); y.casts += bucket.casts[ck]; y.mana += mc; }
+      spent += mc; castsByName[nm] = (castsByName[nm] || 0) + bucket.casts[ck]; nCasts += bucket.casts[ck];
+      if (EXTRA_HEAL_CASTS[nm] || hasHealName(p, nm)) { spentHeal += mc; healCasts += bucket.casts[ck]; var y = sp(nm); y.casts += bucket.casts[ck]; y.mana += mc; }
     }
     var refund = 0, critProcs = 0, critMana = 0;
     for (var en in bucket.energ) {
@@ -469,6 +474,8 @@
       spent: spent, spentHeal: spentHeal, refund: refund, hpm: hpm, critRate: critRate, minMana: bucket.minMana,
       tIn: bucket.tIn, tOut: bucket.tOut, drains: bucket.drains, deaths: bucket.deaths,
       healPerPoint: healD, absorbed: absorbed, critMult: m,
+      // what proc / on-use estimates need: rates per second of casting ("active"), casts by spell name
+      rates: { active: bucket.active || 0, casts: castsByName, nCasts: nCasts, healCasts: healCasts, critD: bucket.critD },
       raw: { critD: bucket.critD, critMana: critMana, critProcs: critProcs, spiritHeal: spiritHeal,
              wsProcs: bucket.energ["Water Shield"] ? bucket.energ["Water Shield"][1] : 0 },
       spells: Object.keys(spells).map(function (k) { return spells[k]; }).filter(function (x) { return x.eff + x.over > 0 || x.casts; })
@@ -510,7 +517,7 @@
     return { label: "Boss fight, " + (L % 60 ? L + " sec" : L / 60 + " min") + " (estimate)", kind: "model", seconds: L,
              duration: L, healing: true, mana: M, regen: regen, need: need, funded: need > 0 ? M / need : 1, lambda: lam,
              manaLimited: w, throughput: base.throughput, healPerPoint: hd * L / Math.max(1, base.duration), eff: base.eff, hpm: base.hpm,
-             overPct: base.overPct, minMana: base.minMana };
+             overPct: base.overPct, minMana: base.minMana, spells: base.spells, rates: base.rates, base: base };
   }
 
   // the fight model's log-side inputs for a player: most common max mana reading, Spirit from COMBATANT_INFO
@@ -586,12 +593,12 @@
   }
 
   function merge(into, b) {
-    ["eff", "over", "critD", "nHeal", "nCrit", "spiritHeal", "tIn", "tOut", "drains", "deaths"].forEach(function (k) { into[k] += b[k]; });
+    ["eff", "over", "critD", "nHeal", "nCrit", "spiritHeal", "tIn", "tOut", "drains", "deaths", "active"].forEach(function (k) { into[k] += b[k] || 0; });
     into.minMana = Math.min(into.minMana, b.minMana);
     for (var k in b.heals) {
       var r = b.heals[k], s = into.heals[k];
       if (!s) { into.heals[k] = JSON.parse(JSON.stringify(r)); continue; }
-      ["n", "nc", "ncSum", "cSum", "okNC", "okC", "eff", "over", "crits"].forEach(function (f) { s[f] += r[f]; });
+      ["n", "nc", "ncSum", "cSum", "okNC", "okC", "eff", "over", "crits", "critD"].forEach(function (f) { s[f] += r[f] || 0; });
     }
     for (var c in b.casts) into.casts[c] = (into.casts[c] || 0) + b.casts[c];
     for (var ab in b.absorbs) into.absorbs[ab] = (into.absorbs[ab] || 0) + b.absorbs[ab];

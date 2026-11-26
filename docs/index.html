@@ -231,8 +231,26 @@ a { color: var(--accent); }
 
     <div class="panel">
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">On-use and proc effects</h2>
+        <div class="row">
+          <label class="f">Fight length (sec)<input id="fightlen" type="number" min="10" step="10" value="180"></label>
+          <label class="f">Time between pulls (sec)<input id="fightgap" type="number" min="0" step="30" value="300"></label>
+        </div>
+      </div>
+      <p class="note" style="margin-top:0">Estimates of what each item's effect is worth to you, in +healing, worked out from your own log: how
+        often you cast (and which spells), how much +1 healing adds per cast, your crit value per spell and your healing per mana.
+        On-use effects are used at the pull and again whenever they come off cooldown; a long cooldown is only ready for some
+        fights (fight length + time between pulls). Procs use the client's proc chance and internal cooldown. The fight length also
+        sets the enchant / consumable values below.
+        Mana effects are worth nothing in the throughput view. These values are also added to the items in Best in bags and Best in slot.
+        Two on-use trinkets share a 15-20 sec cooldown when used together; that isn't counted.</p>
+      <div class="tablewrap"><table id="procs"></table></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
         <h2 style="margin:0">Enchants and consumables</h2>
-        <label class="f">Fight length (sec)<input id="fightlen" type="number" min="10" step="10" value="180"></label>
+        <span class="note">fight length: set above</span>
       </div>
       <p class="note" style="margin-top:0">Worth in +healing, like the gear values. Mana items (potions, runes, the flask) only count in the mana-limited
         view, converted through your healing per mana, and only matter if you would otherwise run out; potions and runes assume one
@@ -263,14 +281,15 @@ a { color: var(--accent); }
   </footer>
 </main>
 <!-- bump ?v= on every change so browsers (phones especially) fetch the new scripts -->
-<script src="spells.js?v=202611261726"></script>
-<script src="talents.js?v=202611261726"></script>
-<script src="items.js?v=202611261726"></script>
-<script src="bags.js?v=202611261726"></script>
-<script src="extras.js?v=202611261726"></script>
-<script src="engine.js?v=202611262000"></script>
-<script src="wcl-config.js?v=202611261726"></script>
-<script src="wcl.js?v=202611261726"></script>
-<script src="app.js?v=202611262000"></script>
+<script src="spells.js?v=1795721690"></script>
+<script src="talents.js?v=1795721690"></script>
+<script src="items.js?v=1795721690"></script>
+<script src="bags.js?v=1795721690"></script>
+<script src="procs.js?v=1795721690"></script>
+<script src="extras.js?v=1795721690"></script>
+<script src="engine.js?v=1795721690"></script>
+<script src="wcl-config.js?v=1795721690"></script>
+<script src="wcl.js?v=1795721690"></script>
+<script src="app.js?v=1795721690"></script>
 </body>
 </html>

@@ -7,12 +7,15 @@ import _items
 
 BUILD = sys.argv[1] if len(sys.argv) > 1 else "1.60.1.70959"
 TIER = {"Pre-raid": "P", "PvP": "V", "Raid": "R", "Later": "L", "Other faction": "F"}
+# items with an on-use / proc effect in docs/procs.js are kept even without scored stats (relics, trinkets)
+_pj = open(os.path.join(os.path.dirname(__file__), "..", "docs", "procs.js"), encoding="utf-8").read()
+PROC_IDS = set(json.loads(_pj[_pj.index("{"):_pj.rindex("};") + 1])["items"])
 out = {}
 for it in _items.all_items(BUILD):
     st = it["stats"]
     heal = st.get("HealingPower", 0) + st.get("SpellPower", 0)
     vals = [heal, st.get("CritRating", 0), st.get("Intellect", 0), st.get("Spirit", 0), st.get("MP5", 0)]
-    if not any(vals):
+    if not any(vals) and str(it["id"]) not in PROC_IDS:
         continue
     c, sc = it["cls_sub"]
     # [name, inventory type, item class, subclass, required level, quality, healing, crit rating, Int, Spirit, MP5,

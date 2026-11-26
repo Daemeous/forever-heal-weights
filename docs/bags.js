@@ -71,19 +71,112 @@
     return true;
   }
 
-  function value(row, w) {
+  // stats, plus the estimated worth of the item's on-use / proc effect when ctx (see procValue) is given
+  function value(row, w, ctx, id) {
     if (!row) return 0;
-    return w.healing * row[6] + w.critRating * row[7] + w.intellect * row[8] + w.spirit * row[9] + w.mp5 * row[10];
+    var v = w.healing * row[6] + w.critRating * row[7] + w.intellect * row[8] + w.spirit * row[9] + w.mp5 * row[10];
+    var P = ctx && ctx.procs && ctx.procs.items[id];
+    return P ? v + procValue(P, ctx).v : v;
+  }
+
+  // ------------------------------------------------------------------ on-use and proc effects
+  // ctx: { w (weights per +1 healing), lambda (healing per mana; 0 = throughput view), L (fight length, sec),
+  //        r (the scope's evaluate() result: healPerPoint, eff, overPct, spentHeal, spells, rates), spirit, procs }
+  // Rates are per second of casting (rates.active), so downtime in the log doesn't dilute them.
+  // Returns { v: worth in +healing, how: short explanation }.
+  function procValue(P, ctx) {
+    var w = ctx.w, lam = ctx.lambda || 0, L = Math.max(10, ctx.L || 180), r = ctx.r || {}, R = r.rates || {};
+    var act = R.active > 0 ? R.active : (r.duration || 0), hd = r.healPerPoint || 0;
+    if (!(act > 0) || !(hd > 0)) return { v: 0, how: "no data" };
+    var h1 = hd / act;                                   // healing per +1 healing per second of casting
+    var fightEq = function (H) { return H / (h1 * L); };  // healing over one fight -> +healing
+    var logEq = function (H) { return H / hd; };          // healing over the whole scope -> +healing
+    var healRate = (R.healCasts || 0) / act, castRate = (R.nCasts || 0) / act;
+    var perCast = R.healCasts ? hd / R.healCasts : 0;     // healing per +1 healing, per heal cast
+    var effRate = (r.eff || 0) / act, over = r.overPct || 0, manaRate = (r.spentHeal || 0) / act;
+    // on-use: ready at every pull if the cooldown is back by the next one (gap = time between pulls), else that share
+    var G = ctx.gap != null ? ctx.gap : 300;
+    var uses = !P.cd ? 1 : P.cd <= L + G ? Math.ceil(L / P.cd) : (L + G) / P.cd;
+    var up = function (d) { return Math.min(1, d * uses / L); };
+    var pct = function (x) { return Math.round(x * 100) + "%"; };
+    var spells = {};
+    (r.spells || []).forEach(function (x) { spells[x.name] = x; });
+    var sum = function (names, f) { return (names || []).reduce(function (t, n) { return t + f(n); }, 0); };
+    var usesTxt = uses >= 1 ? uses + " use" + (uses > 1 ? "s" : "") + " per fight" : "ready for " + Math.round(uses * 100) + "% of fights";
+    var none = function (names) { return "you don't cast " + names.join(" / "); };
+    var cpd, n, pts, k;
+    switch (P.kind) {
+      case "buff":
+        return { v: statValue(P.s, w) * up(P.dur), how: P.dur >= P.cd ? "always up (lasts " + Math.round(P.dur / 60) + " min, cooldown " +
+                 Math.round(P.cd / 60) + " min)" : "up " + pct(up(P.dur)) + " of the fight (" + usesTxt + ")" };
+      case "mana": {
+        var v = fightEq(lam * P.mana * uses), how = P.mana * uses + " mana (" + usesTxt + ")";
+        if (P.then) v += statValue(P.then.s, w) * up(P.then.dur);
+        return { v: v, how: how };
+      }
+      case "costCut": {
+        var avg = R.healCasts ? (r.spentHeal || 0) / R.healCasts : 0;
+        cpd = castRate * P.dur;
+        var m = Math.min(P.per, avg) * cpd * uses;
+        return { v: fightEq(lam * m), how: "~" + cpd.toFixed(1) + " casts per use, " + Math.round(m) + " mana" };
+      }
+      case "costPct": {
+        var mana = (P.pct / 100) * manaRate * P.dur * uses, H = lam * mana;
+        if (P.heal) H += (P.heal / 100) * effRate * (1 - over) * P.dur * uses;
+        return { v: fightEq(H), how: (P.heal ? "+" + P.heal + "% healing, " : "") + Math.round(mana) + " mana (" + usesTxt + ")" };
+      }
+      case "critUntil": {
+        var c = (r.critRate || 0) + P.pct / 100;
+        var secs = Math.min(P.dur, healRate > 0 ? 1 / (c * healRate) : P.dur);
+        return { v: (w.critPct || 0) * P.pct * up(secs), how: "lasts ~" + secs.toFixed(0) + " s (ends at your next crit)" };
+      }
+      case "decay":
+        n = Math.min(Math.floor(P.start / P.step), Math.round(healRate * P.dur));
+        for (pts = 0, k = 0; k < n; k++) pts += P.start - P.step * k;
+        return { v: fightEq(pts * perCast * uses), how: "~" + n + " casts per use, average +" + Math.round(n ? pts / n : 0) };
+      case "ramp":
+        n = Math.min(P.n, Math.round(healRate * P.dur));
+        for (pts = 0, k = 1; k < n; k++) pts += P.per * Math.min(k, P.max);
+        return { v: fightEq(pts * perCast * uses), how: n + " casts per use" };
+      case "charges":
+        n = Math.min(P.n, Math.round(healRate * P.dur));
+        return { v: fightEq(P.heal * n * perCast * uses), how: n + " casts per use" };
+      case "heal":
+        return { v: fightEq(P.amount * P.targets * (1 - over) * uses), how: usesTxt + ", less your overheal " + pct(over) };
+      case "absorb":
+        return { v: fightEq(P.pct / 100 * effRate * P.dur * uses), how: usesTxt + ", every shield used" };
+      case "proc": {
+        var trig = P.spells ? sum(P.spells, function (x) { return (R.casts || {})[x] || 0; }) / act : castRate;
+        var p = Math.min(1, P.chance / 100) * trig, upt = 0;
+        if (p > 0) upt = P.icd >= P.dur ? P.dur / (P.icd + 1 / p) : 1 - Math.exp(-p * P.dur);
+        var s = P.s || [0, 0, 0, (ctx.spirit || 0) * (P.spiPct || 0) / 100, 0];
+        return { v: statValue(s, w) * upt, how: P.spells && !trig ? none(P.spells) :
+                 "up ~" + pct(upt) + (P.spiPct ? " (+" + Math.round(s[3]) + " Spirit)" : "") };
+      }
+      case "spellCost": {
+        var sm = sum(P.spells, function (x) { return spells[x] ? spells[x].mana : 0; }) * P.pct / 100;
+        return { v: logEq(lam * sm), how: sm ? Math.round(sm) + " mana saved in this log" : none(P.spells) };
+      }
+      case "spellMana": {
+        var gm = sum(P.spells, function (x) { return (R.casts || {})[x] || 0; }) * P.mana;
+        return { v: logEq(lam * gm), how: gm ? Math.round(gm) + " mana in this log" : none(P.spells) };
+      }
+      case "spellCrit": {
+        var cd = sum(P.spells, function (x) { return spells[x] ? spells[x].critD : 0; }) / 100 * P.pct;
+        return { v: logEq(cd), how: cd ? "from your " + P.spells.join(" / ") + " heals in this log" : none(P.spells) };
+      }
+    }
+    return { v: 0, how: P.note || "not scored" };
   }
 
   // w: weights relative to +1 healing ({healing, critRating, intellect, spirit, mp5})
-  function bestInBags(exp, cls, level, w, ITEMS) {
+  function bestInBags(exp, cls, level, w, ITEMS, ctx) {
     var I = ITEMS.items, unknown = 0, counts = {};
     exp.owned.forEach(function (id) { counts[id] = (counts[id] || 0) + 1; if (!I[id]) unknown++; });
     var pool = Object.keys(counts).filter(function (id) { return usable(I[id], cls, level); })
-      .map(function (id) { var r = I[id]; return { id: +id, name: r[0], inv: r[1], copies: counts[id], unique: r[12], v: value(r, w), row: r }; });
+      .map(function (id) { var r = I[id]; return { id: +id, name: r[0], inv: r[1], copies: counts[id], unique: r[12], v: value(r, w, ctx, id), row: r }; });
     var eq = exp.equipped.filter(function (id) { return I[id]; })
-      .map(function (id) { var r = I[id]; return { id: id, name: r[0], inv: r[1], v: value(r, w), row: r }; });
+      .map(function (id) { var r = I[id]; return { id: id, name: r[0], inv: r[1], v: value(r, w, ctx, id), row: r }; });
     function top(types, n) {
       var c = [];
       pool.filter(function (x) { return types.indexOf(x.inv) >= 0; }).forEach(function (x) {
@@ -142,7 +235,7 @@
     for (var id in I) {
       var r = I[id];
       if (!usable(r, cls, level) || !allowed(r)) continue;
-      pool.push({ id: +id, name: r[0], inv: r[1], v: value(r, w), src: r[14] || "source unknown", tier: r[13] || "", unique: r[12] });
+      pool.push({ id: +id, name: r[0], inv: r[1], v: value(r, w, opts.ctx, id), proc: !!(opts.ctx && opts.ctx.procs && opts.ctx.procs.items[id]), src: r[14] || "source unknown", tier: r[13] || "", unique: r[12] });
     }
     function top(types, k) {
       return pool.filter(function (x) { return types.indexOf(x.inv) >= 0; }).sort(function (a, b) { return b.v - a.v; }).slice(0, k);
@@ -162,7 +255,12 @@
   // L (fight length, sec) }. Mana is worth lambda healing each (0 in the throughput view).
   function extrasValues(EX, ctx) {
     var w = ctx.w, L = Math.max(10, ctx.L || 180);
-    var ench = EX.enchants.map(function (e) { return Object.assign({ v: statValue(e.s, w) }, e); });
+    var PE = ctx.procs && ctx.procs.enchants || {};
+    var ench = EX.enchants.map(function (e) {
+      var o = Object.assign({ v: statValue(e.s, w) }, e);
+      if (PE[e.n]) { var pv = procValue(PE[e.n], ctx); o.v += pv.v; o.est = pv.how; }
+      return o;
+    });
     var cons = EX.consumables.map(function (c) {
       var uses = c.cd ? Math.ceil(L / c.cd) : 1;
       var uptime = c.up ? Math.min(1, c.up * uses / L) : 1;
@@ -173,7 +271,21 @@
     return { enchants: ench, consumables: cons };
   }
 
-  var api = { parseExport: parseExport, bestInBags: bestInBags, value: value, bisList: bisList, extrasValues: extrasValues };
+  // every on-use / proc item this class can use, valued (ctx as procValue), best first
+  function procList(cls, level, ctx, ITEMS) {
+    var I = ITEMS.items, out = [];
+    for (var id in ctx.procs.items) {
+      var r = I[id];
+      if (!r || !usable(r, cls, level)) continue;
+      var P = ctx.procs.items[id], pv = procValue(P, ctx), sv = value(r, ctx.w);
+      out.push({ id: +id, name: r[0], inv: r[1], tier: r[13] || "", src: r[14] || "source unknown", text: P.text, note: P.note,
+                 kind: P.kind, pv: pv.v, how: pv.how, stats: sv, v: sv + pv.v });
+    }
+    return out.sort(function (a, b) { return b.pv - a.pv; });
+  }
+
+  var api = { parseExport: parseExport, bestInBags: bestInBags, value: value, bisList: bisList, extrasValues: extrasValues,
+              procValue: procValue, procList: procList };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ForeverBags = api;
 })(this);

@@ -306,14 +306,23 @@
   $("baggo").addEventListener("click", function () {
     try { bagExp = window.ForeverBags.parseExport($("bagtext").value); }
     catch (e) { bagExp = null; $("bagnote").innerHTML = '<span class="err">' + esc(e.message) + "</span>"; $("bags").innerHTML = ""; return; }
-    renderBags();
+    renderBags(); renderBis();
   });
   $("bagscope").addEventListener("change", function () { renderBags(); renderBis(); });
+  // what the on-use / proc estimates (bags.js procValue) need from the chosen scope; fight models use their base scope's
+  // rates (casts per second of casting, healing per +1 healing) with the model's own healing per mana
+  function gearCtx() {
+    var r = result, scope = r[$("bagscope").value] || r.whole, b = scope.base || scope;
+    var act = b.rates && b.rates.active > 0 ? b.rates.active : b.duration;
+    return { scope: scope, w: scope[view], lambda: view === "manaLimited" ? (scope.lambda != null ? scope.lambda : r.lambda) : 0,
+             L: +$("fightlen").value || 180, gap: $("fightgap").value === "" ? 300 : +$("fightgap").value, r: b, h1: act > 0 ? b.healPerPoint / act : 0,
+             spirit: r.player.info ? r.player.info.spi || 0 : 0, procs: window.FOREVER_PROCS };
+  }
   function renderBags() {
     if (!bagExp || !result) return;
-    var r = result, src = r[$("bagscope").value] || r.whole, w = src[view];
+    var r = result, ctx = gearCtx(), w = ctx.w;
     var cls = bagExp.cls || r.player.cls, lvl = bagExp.level || 60;
-    var B = window.ForeverBags.bestInBags(bagExp, cls, lvl, w, window.FOREVER_ITEMS);
+    var B = window.ForeverBags.bestInBags(bagExp, cls, lvl, w, window.FOREVER_ITEMS, ctx);
     function cell(x) { return x ? esc(x.name) + ' <span class="muted">' + x.v.toFixed(0) + "</span>" : '<span class="muted">empty, or an item without healer stats</span>'; }
     $("bags").innerHTML = "<thead><tr><th>Slot</th><th>Wearing</th><th>Best you own</th><th>Gain</th></tr></thead><tbody>" +
       B.rows.map(function (x) {
@@ -329,20 +338,23 @@
 
   // ------------------------------------------------------------------ best in slot + enchants / consumables
   document.querySelectorAll(".bistier").forEach(function (c) { c.addEventListener("change", renderBis); });
-  $("fightlen").addEventListener("input", renderBis);
+  $("fightlen").addEventListener("input", function () { renderBags(); renderBis(); });
+  $("fightgap").addEventListener("input", function () { renderBags(); renderBis(); });
   function renderBis() {
     if (!result) return;
-    var r = result, scope = r[$("bagscope").value] || r.whole, w = scope[view], FB = window.ForeverBags;
+    var r = result, ctx = gearCtx(), w = ctx.w, FB = window.ForeverBags;
     var tiers = {};
     document.querySelectorAll(".bistier").forEach(function (c) { if (c.checked) tiers[c.value] = 1; });
-    var rows = FB.bisList(r.player.cls, 60, w, window.FOREVER_ITEMS, { n: 3, tiers: tiers });
-    function it(x) { return x ? esc(x.name) + ' <span class="muted">' + x.v.toFixed(0) + '</span><br><span class="note">' + esc(x.src) + "</span>" : ""; }
+    var rows = FB.bisList(r.player.cls, 60, w, window.FOREVER_ITEMS, { n: 3, tiers: tiers, ctx: ctx });
+    function it(x) {
+      return x ? esc(x.name) + (x.proc ? ' <span class="tag">use / proc</span>' : "") + ' <span class="muted">' + x.v.toFixed(0) +
+        '</span><br><span class="note">' + esc(x.src) + "</span>" : "";
+    }
     $("bis").innerHTML = "<thead><tr><th>Slot</th><th>Best</th><th>2nd</th><th>3rd</th><th>4th</th></tr></thead><tbody>" +
       rows.map(function (x) {
         return '<tr><td>' + x.slot + "</td>" + [0, 1, 2, 3].map(function (i) { return '<td class="enc" style="text-align:left">' + it(x.items[i]) + "</td>"; }).join("") + "</tr>";
       }).join("") + "</tbody>";
-    var L = +$("fightlen").value || 180;
-    var ex = FB.extrasValues(window.FOREVER_EXTRAS, { w: w, lambda: view === "manaLimited" ? r.lambda : 0, h1: scope.duration > 0 ? scope.healPerPoint / scope.duration : 0, L: L });
+    var ex = FB.extrasValues(window.FOREVER_EXTRAS, ctx);
     var tagNew = function (x) { return x.new ? ' <span class="tag">new</span>' : ""; };
     var tip = function (x) { return x.note || x.proc ? ' title="' + esc(x.note || x.proc) + '"' : ""; };
     var bySlot = {};
@@ -351,13 +363,27 @@
       Object.keys(bySlot).map(function (sl) {
         return bySlot[sl].sort(function (a, b) { return b.v - a.v; }).map(function (e, i) {
           return "<tr" + (i ? ' class="dim"' : "") + tip(e) + "><td>" + (i ? "" : esc(sl)) + '</td><td class="enc">' + esc(e.n) + tagNew(e) +
-            (e.proc ? ' <span class="note">(proc, not scored)</span>' : "") + "</td><td>" + e.v.toFixed(0) + "</td></tr>";
+            (e.est ? ' <span class="note">(proc: ' + esc(e.est) + ")</span>" : e.proc ? ' <span class="note">(proc, not scored)</span>' : "") +
+            "</td><td>" + e.v.toFixed(0) + "</td></tr>";
         }).join("");
       }).join("") + "</tbody>";
     $("cons").innerHTML = "<thead><tr><th>Item</th><th>Type</th><th>Worth</th><th>Mana \u2192 healing</th></tr></thead><tbody>" +
       ex.consumables.sort(function (a, b) { return b.v - a.v; }).map(function (c) {
         return "<tr" + tip(c) + '><td class="enc">' + esc(c.n) + tagNew(c) + "</td><td>" + c.kind + "</td><td>" + c.v.toFixed(0) +
           "</td><td>" + (c.manaHeal ? Math.round(c.manaHeal).toLocaleString() + (c.uses > 1 ? " (" + c.uses + " uses)" : "") : "") + "</td></tr>";
+      }).join("") + "</tbody>";
+    // on-use and proc items this class can use
+    var own = {};
+    if (bagExp) bagExp.owned.forEach(function (id) { own[id] = 1; });
+    var TN = { P: "", V: "PvP", R: "Classic raid", L: "later content", F: "other faction" };
+    $("procs").innerHTML = "<thead><tr><th>Item</th><th>Effect</th><th>Effect worth</th><th>With its stats</th><th>How</th></tr></thead><tbody>" +
+      FB.procList(r.player.cls, 60, ctx, window.FOREVER_ITEMS).map(function (x) {
+        var tags = (own[x.id] ? ' <span class="tag">you own it</span>' : "") +
+          (x.tier && TN[x.tier[0]] ? ' <span class="note">(' + TN[x.tier[0]] + ")</span>" : !x.tier ? ' <span class="note">(no known source)</span>' : "");
+        return "<tr" + (x.pv > 0.5 ? "" : ' class="dim"') + ' title="' + esc(x.text) + '"><td class="enc">' + esc(x.name) + tags +
+          '<br><span class="note">' + esc(x.src) + '</span></td><td class="enc" style="text-align:left">' + esc(x.text) +
+          (x.note ? ' <span class="note">(' + esc(x.note) + ")</span>" : "") + "</td><td>" + (x.kind === "none" ? "–" : x.pv.toFixed(0)) +
+          "</td><td>" + x.v.toFixed(0) + '</td><td class="note" style="text-align:left">' + esc(x.how) + "</td></tr>";
       }).join("") + "</tbody>";
   }
 
