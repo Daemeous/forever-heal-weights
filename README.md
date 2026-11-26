@@ -31,7 +31,7 @@ Logs once. The page then reads the report through the Warcraft Logs API, still i
 
 The API returns events already parsed, not raw log lines. `docs/wcl.js` converts them into the same events the
 raw-log reader produces. `node tools/wcl_roundtrip.js <log> <Player-GUID>` checks that conversion against a raw log.
-The API's real field layout (resource actor, hit points, cast cost) has not yet been checked against a live report.
+Checked against a live Forever report (26 Nov 2026): field layout, talents (`talentTree`), absorbs, and boss pulls (`dungeonencounterstart`/`end` events inside one whole-dungeon fight).
 
 ## Before you start
 

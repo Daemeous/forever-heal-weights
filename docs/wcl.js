@@ -209,9 +209,12 @@
     rep.masterData.actors.forEach(function (a) { if (a.petOwner) an.owner[guid(a.id)] = "Player-" + a.petOwner; });
     var T0 = rep.startTime;
     // encounter boundaries, interleaved by time
+    // boss pulls: Forever dungeon reports have one "fight" per whole dungeon and mark each boss with
+    // dungeonencounterstart / dungeonencounterend events - use those when present, else the fights list (raids)
+    var hasDE = events.some(function (e) { return e.type === "dungeonencounterstart"; });
     var marks = [];
     rep.fights.forEach(function (f) {
-      if (!f.encounterID) return;
+      if (!f.encounterID || hasDE) return;
       marks.push({ ts: f.startTime, E: { type: "encStart", name: f.name } });
       marks.push({ ts: f.endTime, E: { type: "encEnd", kill: f.kill === true ? true : f.kill === false ? false : null }, end: true });
     });
@@ -250,6 +253,8 @@
         E.type = "energize"; E.ptype = String(e.resourceChangeType); E.amount = e.resourceChange || 0; E.over = e.waste || 0;
         break;
       case "absorbed": E.type = "absorb"; E.amount = e.amount || 0; break;   // shield caster = source
+      case "dungeonencounterstart": E.type = "encStart"; E.name = e.name; break;
+      case "dungeonencounterend": E.type = "encEnd"; E.kill = e.kill === true ? true : e.kill === false ? false : null; break;
       case "death": E.type = "death"; break;
       case "summon": E.type = "summon"; break;
       case "combatantinfo":

@@ -17,8 +17,8 @@ for (const line of fs.readFileSync(F,'utf8').split('\n')) {
   if(!cap) continue;
   if(T0==null) T0=Math.round(cap.t*1000);
   const ts=Math.round(cap.t*1000)-T0;
-  if(cap.type==='encStart'){open={id:fights.length+1,name:cap.name,startTime:ts,encounterID:1}; continue;}
-  if(cap.type==='encEnd'){ if(open){open.endTime=ts;open.kill=cap.kill;fights.push(open);open=null;} continue;}
+  if(cap.type==='encStart'){events.push({timestamp:ts,type:'dungeonencounterstart',name:cap.name}); continue;}
+  if(cap.type==='encEnd'){events.push({timestamp:ts,type:'dungeonencounterend',kill:cap.kill}); continue;}
   const e={timestamp:ts,sourceID:id(cap.src,cap.srcName),targetID:id(cap.dst),abilityGameID:+cap.sid}; ab[cap.sid]=cap.spell;
   if(cap.adv){ e.resourceActor = cap.adv.unit===cap.src?1:2; e.classResources=[{type:0,amount:cap.adv.mana,max:cap.adv.max}]; id(cap.adv.unit); }
   if(cap.type==='heal'){Object.assign(e,{type:'heal',amount:cap.amount-cap.over,overheal:cap.over,hitType:cap.crit?2:1,tick:cap.periodic||undefined}); if(cap.maxHp){e.resourceActor=2;e.hitPoints=cap.hp;e.maxHitPoints=cap.maxHp;}}
@@ -31,6 +31,7 @@ for (const line of fs.readFileSync(F,'utf8').split('\n')) {
   events.push(e);
 }
 a1.finish();
+fights.push({id:1,name:'Whole dungeon',startTime:0,endTime:events[events.length-1].timestamp,kill:true,encounterID:999});
 const rep={code:'x',startTime:T0,endTime:T0+events[events.length-1].timestamp,fights,masterData:{actors,abilities:Object.entries(ab).map(([g,n])=>({gameID:+g,name:n}))}};
 const a2=C.feed(new W.Analyzer(S,T),rep,events).finish();
 const g2='Player-'+ids[G];
