@@ -215,6 +215,7 @@
     $("viewnote").innerHTML = view === "throughput"
       ? "Mana treated as free: what makes your heals bigger. Use this if you rarely run low."
       : "Mana valued at <b>" + r.lambda.toFixed(2) + " healing per mana</b> (your healing per mana in boss fights, after talent discounts and refunds). Use this if you run dry.";
+    $("viewnote").innerHTML += " Your crits heal for <b>\u00d7" + r.whole.critMult.toFixed(2) + "</b> (measured from your heals).";
     var cards = [["All boss fights", r.bosses], ["Whole log", r.whole], ["Trash and between pulls", r.trash]];
     $("cards").innerHTML = cards.filter(function (c) { return c[1] && c[1].healing; }).map(function (c) {
       var x = c[1], w = x[view];
@@ -244,12 +245,57 @@
     });
     $("enc").innerHTML = "<thead>" + head + "</thead><tbody>" + (rows.join("") || '<tr><td colspan="9" class="muted">No encounters in this log.</td></tr>') + "</tbody>";
 
+    renderSpellScopes();
     var rc = r.realCost, keys = Object.keys(rc).sort();
     $("costs").innerHTML = keys.length ? "<table><tr><th>Spell</th><th>Logged cost</th><th>Real cost</th></tr>" + keys.map(function (k) {
       var i = k.lastIndexOf("|");
       return "<tr><td>" + esc(k.slice(0, i)) + "</td><td>" + k.slice(i + 1) + "</td><td>" + rc[k] + "</td></tr>";
     }).join("") + "</table>" : "No mana readings found.";
   }
+
+  // ------------------------------------------------------------------ per-spell table
+  var scopeRows = [];
+  function renderSpellScopes() {
+    var r = result, sel = $("spscope"), keep = sel.value;
+    scopeRows = [["All boss fights", r.bosses], ["Whole log", r.whole], ["Trash and between pulls", r.trash]].filter(function (x) { return x[1]; });
+    r.encounters.forEach(function (e) {
+      if (e.healing) scopeRows.push([e.label + " " + new Date(e.start * 1000).toISOString().slice(11, 16) + (e.kill === false ? " (wipe)" : ""), e]);
+    });
+    sel.innerHTML = scopeRows.map(function (x, i) { return '<option value="' + i + '">' + esc(x[0]) + "</option>"; }).join("");
+    if (keep && +keep < scopeRows.length) sel.value = keep;
+    renderSpells();
+  }
+  $("spscope").addEventListener("change", renderSpells);
+  function renderSpells() {
+    var row = scopeRows[+$("spscope").value || 0];
+    if (!row) { $("spells").innerHTML = ""; return; }
+    var list = row[1].spells || [], tot = row[1].eff || 1;
+    $("spells").innerHTML = "<thead><tr><th>Spell</th><th>Casts</th><th>Mana</th><th>Healing</th><th>Share</th><th>Overheal</th><th>Crit</th><th>Healing per mana</th></tr></thead><tbody>" +
+      list.map(function (x) {
+        var hpm = x.mana > 0 ? (x.eff / x.mana).toFixed(2) : "–";
+        return "<tr><td>" + esc(x.name) + "</td><td>" + (x.casts || "–") + "</td><td>" + (x.mana ? fmtK(x.mana) : "–") + "</td><td>" + fmtK(x.eff) +
+          "</td><td>" + pct(x.eff / tot) + "</td><td>" + (x.eff + x.over > 0 && !x.absorb ? pct(x.over / (x.eff + x.over)) : "–") +
+          "</td><td>" + (x.hits ? pct(x.crits / x.hits) : "–") + "</td><td>" + hpm + "</td></tr>";
+      }).join("") + "</tbody>";
+  }
+
+  // ------------------------------------------------------------------ copy a one-line summary (Discord etc.)
+  $("copy").addEventListener("click", function () {
+    if (!result) return;
+    var r = result, b = r.bosses || r.whole, w = b[view], P = r.player;
+    var txt = P.name.split("-")[0] + " (" + P.cls + ") \u2013 stat weights from " + (r.bosses ? "all boss fights" : "the whole log") + ", " +
+      (view === "manaLimited" ? "mana-limited" : "throughput") + ", +1 healing = 1.00: " +
+      STATS.slice(1).map(function (s) { return s[1] + " " + w[s[0]].toFixed(2); }).join(" \u00b7 ") +
+      " (bonus healing " + Math.round(opts.bonus) + ", " + b.hpm.toFixed(2) + " healing/mana, " + pct(b.overPct) + " overheal) " + location.origin + location.pathname;
+    function done() { $("copied").textContent = " Copied."; setTimeout(function () { $("copied").textContent = ""; }, 2500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function () { fallback(); });
+    else fallback();
+    function fallback() {
+      var ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) { $("copied").textContent = " " + txt; }
+      document.body.removeChild(ta);
+    }
+  });
 
   $("csv").addEventListener("click", function () {
     if (!result) return;

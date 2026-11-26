@@ -15,7 +15,8 @@ The log is read by your own browser. Nothing is uploaded anywhere.
 - Two views:
   - **Throughput**: mana is free. This tells you what makes your heals bigger.
   - **Mana-limited**: each point of mana is worth your healing per mana in boss fights.
-- A CSV export.
+- A per-spell table (casts, real mana, healing, overheal, crit rate, healing per mana) for any fight or all of them.
+- A CSV export and a one-line "Copy summary" for Discord.
 
 **Warcraft Logs link** (the second tab): paste a `forever.warcraftlogs.com` report link and sign in to Warcraft
 Logs once. The page then reads the report through the Warcraft Logs API, still in your browser.
@@ -48,7 +49,9 @@ The API's real field layout (resource actor, hit points, cast cost) has not yet 
 
 - **+1 bonus healing**: summed over every heal that did not overheal. Each heal counts its spell's coefficient
   (Forever client data) times your talent multiplier, measured from your own non-crit heals, times the downrank
-  penalty. Crits count x1.5.
+  penalty. Crits count at your measured crit size (below).
+- **Crit size** is measured from your own heals (mean crit / mean non-crit), so talents such as Paladin Holy Power
+  are included without needing to model them.
 - **+1% crit**:
   - A non-crit that didn't overheal gains half its size, capped at the target's missing health.
   - A crit gains only the part of its crit bonus that wasn't overheal.
@@ -65,8 +68,9 @@ The API's real field layout (resource actor, hit points, cast cost) has not yet 
 
 Assumptions you may want to check:
 - Regen formulas are Classic. The Priest one (13 + Spirit/4 per tick) is confirmed in Forever.
-- Swiftmend and Earth Shield get no bonus-healing credit.
-- Absorbs (Power Word: Shield) are not counted as healing.
+- Swiftmend gets bonus-healing credit as a full Rejuvenation. Earth Shield gets none.
+- Shield absorbs (Power Word: Shield, Divine Aegis) count as healing done, with no bonus-healing credit.
+- Only class healing spells count; potions and trinket heals are left out.
 
 ## Command line
 

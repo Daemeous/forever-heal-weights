@@ -152,6 +152,7 @@ a { color: var(--accent); }
           <button class="btn" data-view="throughput">Throughput</button>
         </div>
       </div>
+      <div class="row" style="margin:-4px 0 10px"><button class="btn" id="copy">Copy summary</button><span id="copied" class="note"></span></div>
       <p class="note" id="viewnote" style="margin-top:0"></p>
       <div class="cards" id="cards"></div>
     </div>
@@ -164,6 +165,16 @@ a { color: var(--accent); }
       <p class="note" style="margin-top:0">Weights are healing gained per point of each stat, relative to +1 bonus healing (= 1.00).
         Short fights are noisy: compare the boss-fight totals above before acting on a single pull.</p>
       <div class="tablewrap"><table id="enc"></table></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Spells</h2>
+        <label class="f sel">Fights<select id="spscope"></select></label>
+      </div>
+      <p class="note" style="margin-top:0">Healing per mana uses what each spell really cost you (after talents); healing a spell triggers without a cast of its own
+        (Prayer of Mending bounces, Bloom, Holy Binding) is credited to it, not to the spell you cast to trigger it. Shield absorbs count as healing.</p>
+      <div class="tablewrap"><table id="spells"></table></div>
     </div>
 
     <div class="panel note">
@@ -185,11 +196,11 @@ a { color: var(--accent); }
   </footer>
 </main>
 <!-- bump ?v= on every change so browsers (phones especially) fetch the new scripts -->
-<script src="spells.js?v=202611261603"></script>
-<script src="talents.js?v=202611261603"></script>
-<script src="engine.js?v=202611261603"></script>
-<script src="wcl-config.js?v=202611261603"></script>
-<script src="wcl.js?v=202611261603"></script>
-<script src="app.js?v=202611261603"></script>
+<script src="spells.js?v=202611261609"></script>
+<script src="talents.js?v=202611261609"></script>
+<script src="engine.js?v=202611261609"></script>
+<script src="wcl-config.js?v=202611261609"></script>
+<script src="wcl.js?v=202611261609"></script>
+<script src="app.js?v=202611261609"></script>
 </body>
 </html>

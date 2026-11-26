@@ -249,6 +249,7 @@
       case "resourcechange":
         E.type = "energize"; E.ptype = String(e.resourceChangeType); E.amount = e.resourceChange || 0; E.over = e.waste || 0;
         break;
+      case "absorbed": E.type = "absorb"; E.amount = e.amount || 0; break;   // shield caster = source
       case "death": E.type = "death"; break;
       case "summon": E.type = "summon"; break;
       case "combatantinfo":

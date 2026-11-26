@@ -55,6 +55,11 @@ for hid, lvl in ((5672, 20), (6371, 30), (6372, 40), (10460, 50), (10461, 60)): 
     out[str(hid)] = dict(n="Healing Stream", c="Shaman", l=lvl, h=[round(e["base"], 2), round(e["coef"], 4)])
 fh = db.heal_effects(10917)[0]                    # Holy Binding: heals the Priest for 50% of the Flash Heal
 out["1328570"] = dict(n="Holy Binding", c="Priest", l=56, d=[round((fh["low"] + fh["high"]) / 4, 2), round(fh["coef"] / 2, 4)])
+rj = max((i for i in db.learn["Druid"] if db.names.get(i) == "Rejuvenation" and db.spell(i)["base_level"] > 0),
+         key=lambda i: db.spell(i)["base_level"])
+for sm in (i for i in db.learn["Druid"] if db.names.get(i) == "Swiftmend"):   # heals for the HoT it reads
+    if sm in out:
+        out[sm]["like"] = rj
 out["1328622"] = dict(n="Bloom", c="Druid", l=60, spirit=1)   # Bloom heals for the Druid's Spirit (24 Nov 2026 log)
 
 meta = dict(build=BUILD, level=60, n=len(out))
