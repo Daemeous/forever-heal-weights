@@ -6,5 +6,5 @@
 // then paste the client ID below. While it is empty, the "Warcraft Logs link" tab shows a "not set up yet" note.
 var WCL_CONFIG = {
   site: "https://forever.warcraftlogs.com",
-  clientId: "",
+  clientId: "01a2187d-74a8-730e-b971-b031b6367a59",
 };

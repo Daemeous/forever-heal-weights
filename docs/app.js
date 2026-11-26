@@ -118,6 +118,7 @@
       $("progress").firstElementChild.style.width = (next ? 100 * next / end : 100).toFixed(1) + "%";
       status("Downloaded " + n.toLocaleString() + " events…");
     }).then(function (events) {
+      wclSample(rep, events);
       an = WCL.feed(new W.Analyzer(FOREVER_SPELLS), rep, events).finish();
       var only = W.healers(an).filter(function (x) { return x.guid === "Player-" + id; });
       var secs = ((performance.now() - t0) / 1000).toFixed(1);
@@ -125,6 +126,16 @@
       else status("Downloaded " + events.length.toLocaleString() + " events, but none of " + h.name + "'s heals could be read. Was Advanced Combat Logging on?", true);
     }).catch(wclFail);
   });
+
+  // debug: a small sample of the raw API data, so the adapter's field assumptions can be checked
+  function wclSample(r, events) {
+    var pick = {}, out = [];
+    events.forEach(function (e) { var k = e.type; pick[k] = (pick[k] || 0) + 1; if (pick[k] <= 25) out.push(e); });
+    var blob = new Blob([JSON.stringify({ report: { code: r.code, startTime: r.startTime, fights: r.fights.slice(0, 15),
+      actors: r.masterData.actors.length, sampleActors: r.masterData.actors.slice(0, 15) }, typeCounts: pick, events: out }, null, 1)], { type: "application/json" });
+    var a = $("wcldebug");
+    a.href = URL.createObjectURL(blob); a.download = "wcl-sample-" + r.code + ".json"; a.classList.remove("hidden");
+  }
 
   // finish a sign-in redirect, then continue loading the report that started it
   try { if (localStorage.getItem("fhw:src") === "wcl") setSource("wcl"); } catch (e) {}
