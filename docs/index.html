@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forever Healer Stat Weights</title>
+<meta name="description" content="Stat weights for WoW Forever healers from your own combat log, per encounter. Runs in your browser - the log never leaves your PC.">
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc; --accent: #2f6f5e; --accent-ink: #fff;
+  --good: #2f6f5e; --warn: #9a5b00; --dim: #a5a3a0; --chip: #eef3f1; --bar: #2f6f5e33;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141517; --panel: #1d1f22; --ink: #ececec; --muted: #9b9ca1; --line: #2e3034; --accent: #6cc3a6; --accent-ink: #0c1512;
+    --good: #6cc3a6; --warn: #e0a24a; --dim: #5d5f63; --chip: #22302b; --bar: #6cc3a633;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141517; --panel: #1d1f22; --ink: #ececec; --muted: #9b9ca1; --line: #2e3034; --accent: #6cc3a6; --accent-ink: #0c1512;
+  --good: #6cc3a6; --warn: #e0a24a; --dim: #5d5f63; --chip: #22302b; --bar: #6cc3a633;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 60px; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 0 0 12px; }
+.sub { color: var(--muted); margin: 0 0 22px; max-width: 760px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+.drop { border: 2px dashed var(--line); border-radius: 10px; padding: 26px 16px; text-align: center; cursor: pointer; transition: border-color .15s; }
+.drop.over, .drop:hover { border-color: var(--accent); }
+.drop strong { display: block; font-size: 16px; margin-bottom: 4px; }
+.drop code, .note code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13px; word-break: break-all; }
+.muted { color: var(--muted); }
+.progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 14px; display: none; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width .1s; }
+.row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+label.f { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); gap: 4px; }
+label.f input, label.f select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
+label.f input { width: 110px; }
+label.f select { min-width: 240px; max-width: 100%; }
+.btn { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+.btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg .btn { border: 0; border-radius: 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.card h3 { margin: 0 0 2px; font-size: 15px; }
+.card .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+.w { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 14px; font-variant-numeric: tabular-nums; font-size: 14px; }
+.w .h { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.w .v { text-align: right; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+th:first-child, td:first-child { text-align: left; }
+td.enc { white-space: normal; min-width: 150px; }
+tr.dim td { color: var(--dim); }
+tr.sep td { background: var(--chip); font-size: 12px; color: var(--muted); text-align: left; }
+.cell { position: relative; }
+.cell .b { position: absolute; left: 0; top: 4px; bottom: 4px; background: var(--bar); border-radius: 2px; }
+.cell span { position: relative; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 9px; background: var(--chip); color: var(--muted); }
+.tag.wipe { color: var(--warn); }
+.tag.low { color: var(--warn); }
+details { margin-top: 6px; }
+details summary { cursor: pointer; color: var(--muted); }
+.note { font-size: 13.5px; color: var(--muted); }
+.note p { margin: 6px 0; }
+.hidden { display: none !important; }
+.err { color: var(--warn); }
+footer { color: var(--muted); font-size: 12.5px; margin-top: 30px; }
+a { color: var(--accent); }
+@media (max-width: 600px) { label.f input { width: 92px; } label.f select { min-width: 0; width: 100%; } label.f.sel { width: 100%; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Forever Healer Stat Weights</h1>
+  <p class="sub">Stat weights for Priest, Paladin, Shaman and Druid healers, worked out from your own combat log, fight by fight.
+    The log is read <strong>in your browser</strong>: nothing is uploaded, and the page works offline once loaded.</p>
+
+  <section class="panel">
+    <h2>1. Choose your combat log</h2>
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose combat log files">
+      <strong>Drop <code>WoWCombatLog-….txt</code> here, or click to choose</strong>
+      <span class="muted">Usually in <code>World of Warcraft\_forever_\Logs\</code>. Advanced Combat Logging must be on (System › Network). Several files are fine.</span>
+    </div>
+    <input id="file" type="file" accept=".txt,.log" multiple class="hidden">
+    <div id="progress" class="progress"><div></div></div>
+    <p id="status" class="muted" style="margin:10px 0 0"></p>
+  </section>
+
+  <section id="setup" class="panel hidden">
+    <h2>2. Pick the healer and check the inputs</h2>
+    <div class="row">
+      <label class="f sel">Healer<select id="who"></select></label>
+      <label class="f">Bonus healing<input id="bonus" type="number" step="1" min="0"></label>
+      <label class="f">Int talents %<input id="intBonus" type="number" step="1" min="0"></label>
+      <label class="f">Spirit → healing %<input id="sg" type="number" step="1" min="0"></label>
+      <label class="f">Regen while casting %<input id="casting" type="number" step="1" min="0" max="100"></label>
+    </div>
+    <details>
+      <summary>More inputs</summary>
+      <div class="row" style="margin-top:10px">
+        <label class="f">Mana/sec per Spirit<input id="regen" type="number" step="0.005" min="0"></label>
+        <label class="f">Crit % per Intellect<input id="critPerInt" type="number" step="0.0001" min="0"></label>
+        <label class="f">Healing per mana (0 = auto)<input id="lambda" type="number" step="0.1" min="0"></label>
+      </div>
+    </details>
+    <div class="note">
+      <p><b>Bonus healing</b>: the "Bonus Healing" figure from your character sheet (with the gear you wore in the log). It is the one input that matters most.
+        <b>Int talents</b>: e.g. Mental Strength / Heart of the Wild 10%. <b>Spirit → healing</b>: Priest Spiritual Guidance, 5% per point.
+        <b>Regen while casting</b>: Meditation / Mindfulness / Reflection, usually 50% if taken.</p>
+    </div>
+  </section>
+
+  <section id="results" class="hidden">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <h2 id="rtitle" style="margin:0"></h2>
+        <div class="seg" role="group" aria-label="Weight view">
+          <button class="btn on" data-view="throughput">Throughput</button>
+          <button class="btn" data-view="manaLimited">Mana-limited</button>
+        </div>
+      </div>
+      <p class="note" id="viewnote" style="margin-top:0"></p>
+      <div class="cards" id="cards"></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Per encounter</h2>
+        <button class="btn" id="csv">Download CSV</button>
+      </div>
+      <p class="note" style="margin-top:0">Weights are healing gained per point of each stat, relative to +1 bonus healing (= 1.00).
+        Short fights are noisy: compare the boss-fight totals above before acting on a single pull.</p>
+      <div class="tablewrap"><table id="enc"></table></div>
+    </div>
+
+    <div class="panel note">
+      <h2 style="color:var(--ink)">How it works</h2>
+      <p><b>+1 bonus healing</b>: for every heal that did not overheal, how much one more point would have added (the spell's coefficient from the Forever client data,
+        times your talent multiplier measured from your own heals, times the downrank penalty). Crits count 1.5×. Heals that overhealed gain nothing.</p>
+      <p><b>+1% crit</b>: a non-crit that didn't overheal would have gained up to half its size, capped at the target's missing health; a crit that partly overhealed gains only the part of the crit bonus that landed.
+        Water Shield / Illumination mana from crits counts in the mana-limited view. Crit rating = 14 per 1%.</p>
+      <p><b>Intellect</b>: its crit, plus (mana-limited) 15 mana per point every time you drained your mana from full to under 10%.</p>
+      <p><b>Spirit / MP5</b>: only count while you were below full mana (regen is wasted at full), split into inside / outside the five-second rule. Druid Bloom heals for your Spirit, so Druid Spirit has throughput value.</p>
+      <p><b>Throughput</b> treats mana as free (you never ran out). <b>Mana-limited</b> values each point of mana at your healing per mana across all boss fights. Use mana-limited when you ran dry; rows where your mana never went below 40% are dimmed in that view.</p>
+      <p><b>Real mana costs</b>: the log shows each spell's cost before talents, so the real cost is measured from your mana bar right after each cast.</p>
+      <details><summary>Measured spell costs for this healer</summary><div id="costs" style="margin-top:8px"></div></details>
+    </div>
+  </section>
+
+  <footer>
+    Spell data: Forever client build <span id="build"></span>. Not affiliated with Blizzard. Open source: check the code, or run it offline from the repository.
+  </footer>
+</main>
+<script src="spells.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
