@@ -76,19 +76,33 @@
     this.lines = 0; this.t0 = null; this.tLast = null;
   }
 
-  // a spec is a healing spec if any of its talents boosts healing (Spiritual Healing, Gift of Nature, Purification,
-  // Healing Light, Improved Renew, ...); unknown talents or no talent table -> assume healing
-  Analyzer.prototype.isOffspec = function (talents) {
+  // Each talent build a player logs is kept apart while reading (a "set"). At the end, the build that did most of the
+  // player's class healing is their healing spec, and so is any other build with a healing-only talent (Spiritual
+  // Healing, Gift of Nature, Purification, Healing Light, Improved Renew, ...). Everything else (e.g. Shadow) is
+  // off-spec and left out of every total. healTalent: true / false, or null when it can't tell (no talent data).
+  Analyzer.prototype.healTalent = function (talents) {
     var TAL = this.TAL;
-    if (!TAL || !talents || !talents.length) return false;
+    if (!TAL || !talents || !talents.length) return null;
     for (var i = 0; i < talents.length; i++) {
       var ti = TAL.entries[talents[i].entry];
       if (ti == null) continue;
       var T = TAL.talents[ti], r = T.r[Math.min(talents[i].rank, T.r.length) - 1] || {};
-      // only healing-only talents count: Twin Disciplines / Genesis boost damage too and turn up in damage specs
-      if ((r.heal || []).some(function (h) { return !h.instant && !h.periodic; })) return false;
+      // Twin Disciplines / Genesis boost damage too and turn up in damage specs, so they don't count
+      if ((r.heal || []).some(function (h) { return !h.instant && !h.periodic; })) return true;
     }
-    return true;
+    return false;
+  };
+
+  function sigOf(talents) {
+    return (talents || []).map(function (x) { return x.entry + ":" + x.rank; }).sort().join(",");
+  }
+
+  Analyzer.prototype.useSet = function (p, talents) {
+    var sig = sigOf(talents), S = p.sets[sig];
+    if (!S) S = p.sets[sig] = { sig: sig, healTal: this.healTalent(talents),
+      all: newBucket("all", "Whole log", this.tLast), trash: newBucket("trash", "Trash and between pulls", this.tLast), enc: {} };
+    p.cur = S;
+    p.all = S.all; p.trash = S.trash; p.enc = S.enc;    // provisional until finish() picks the healing spec
   };
 
   Analyzer.prototype.player = function (guid, name) {
@@ -96,33 +110,29 @@
     if (!p) {
       p = this.players[guid] = {
         guid: guid, name: name || guid, cls: {}, info: null,
-        all: newBucket("all", "Whole log", this.tLast), trash: newBucket("trash", "Trash and between pulls", this.tLast),
-        enc: {},             // encounter idx -> bucket
+        sets: {}, cur: null, all: null, trash: null, enc: null,
         chain: {},           // sid -> open chain group
-        last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], critMult: 1.5,
-        offspec: false, off: newBucket("off", "Off-spec", this.tLast), offEnc: {},
+        last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], hlB: [], critMult: 1.5,
+        offEnc: {}, healSigs: null,
       };
+      this.useSet(p, null);
     }
     if (name && p.name === guid) p.name = name;
     if (p.infos.length === 0 && this.pendingInfo && this.pendingInfo[guid]) {
       p.infos = this.pendingInfo[guid]; delete this.pendingInfo[guid];
-      p.info = p.infos[p.infos.length - 1].stats; p.offspec = this.isOffspec(p.infos[p.infos.length - 1].talents);
+      p.info = p.infos[p.infos.length - 1].stats; this.useSet(p, p.infos[p.infos.length - 1].talents);
     }
     return p;
   };
 
   Analyzer.prototype.buckets = function (p, t) {
-    if (p.offspec) {                 // off-spec (e.g. Shadow): keep it out of every total, just note the fight
-      if (this.enc) p.offEnc[this.enc.idx] = true;
-      return [p.off];
-    }
-    var b = [p.all];
+    var S = p.cur, b = [S.all];
     if (this.enc) {
-      var e = p.enc[this.enc.idx];
-      if (!e) e = p.enc[this.enc.idx] = newBucket("enc", this.enc.name, this.enc.start);
+      var e = S.enc[this.enc.idx];
+      if (!e) e = S.enc[this.enc.idx] = newBucket("enc", this.enc.name, this.enc.start);
       e.encIdx = this.enc.idx;
       b.push(e);
-    } else b.push(p.trash);
+    } else b.push(S.trash);
     for (var i = 0; i < b.length; i++) { if (b[i].start == null) b[i].start = t; b[i].end = t; }
     return b;
   };
@@ -182,7 +192,7 @@
     if (E.type === "info") {   // several per log (one per pull): keep them all, detect() picks the healing spec
       var rec = { t: t, stats: E.stats, talents: E.talents || [] };
       var pi = this.players[E.src];
-      if (pi) { pi.info = E.stats; pi.infos.push(rec); pi.offspec = this.isOffspec(rec.talents); }
+      if (pi) { pi.info = E.stats; pi.infos.push(rec); if (rec.talents.length) this.useSet(pi, rec.talents); }
       else ((this.pendingInfo = this.pendingInfo || {})[E.src] = this.pendingInfo[E.src] || []).push(rec);
       return;
     }
@@ -240,7 +250,8 @@
     var key = h.sid + "|" + h.p + "|" + h.idx;
     // the value of +crit for this heal depends on how big this healer's crits are (x1.5, more with talents such as
     // Holy Power), which is only known at the end: keep what it needs and work it out in finish()
-    p.hl.push(h.a, h.o, h.crit ? 1 : 0, h.max > 0 ? Math.max(0, h.max - h.hp) : -1, h.b[1] ? (h.b[1].kind === "enc" ? h.b[1].encIdx : -1) : -2);
+    p.hl.push(h.a, h.o, h.crit ? 1 : 0, h.max > 0 ? Math.max(0, h.max - h.hp) : -1);
+    p.hlB.push(h.b);
     for (var i = 0; i < h.b.length; i++) {
       var b = h.b[i], r = b.heals[key];
       if (!r) r = b.heals[key] = { sid: h.sid, name: h.name, p: h.p, idx: h.idx, n: 0, nc: 0, ncSum: 0, cSum: 0, okNC: 0, okC: 0, eff: 0, over: 0, crits: 0 };
@@ -293,8 +304,11 @@
     var e = this.encounters[this.enc.idx];
     e.end = t; e.kill = kill;
     for (var g in this.players) {
-      var b = this.players[g].enc[this.enc.idx];
-      if (b) { b.end = t; b.kill = kill; b.start = this.enc.start; }
+      var sets = this.players[g].sets;
+      for (var sg in sets) {
+        var b = sets[sg].enc[this.enc.idx];
+        if (b) { b.end = t; b.kill = kill; b.start = this.enc.start; }
+      }
     }
     this.enc = null;
   };
@@ -305,18 +319,39 @@
       var p = this.players[g];
       for (var sid in p.chain) this.flushChain(p, p.chain[sid]);
       p.chain = {};
-      p.critMult = critMultiplier(p);
+      // which talent builds are healing specs (see useSet)
+      var Sx = this.S, sets = Object.keys(p.sets).map(function (k) { return p.sets[k]; }), main = null, mainHeal = -1;
+      sets.forEach(function (st) {
+        st.classHeal = 0;
+        for (var k in st.all.heals) if (Sx[st.all.heals[k].sid]) st.classHeal += st.all.heals[k].eff;
+        if (st.classHeal > mainHeal) { mainHeal = st.classHeal; main = st; }
+      });
+      var healing = sets.filter(function (st) { return st === main || st.healTal !== false; });
+      p.healSigs = {};
+      healing.forEach(function (st) { p.healSigs[st.sig] = true; });
+      p.critMult = critMultiplier(healing.map(function (st) { return st.all.heals; }));
       var m = p.critMult, H = p.hl;
-      for (var q = 0; q < H.length; q += 5) {
-        var a = H[q], o = H[q + 1], c = H[q + 2], miss = H[q + 3], ei = H[q + 4], cd = 0;
+      for (var q = 0, hb = 0; q < H.length; q += 4, hb++) {
+        var a = H[q], o = H[q + 1], c = H[q + 2], miss = H[q + 3], cd = 0;
         if (c) cd = o === 0 ? a * (m - 1) / m : Math.max(0, (a - o) - a / m);
         else if (o === 0 && miss >= 0) cd = Math.min((m - 1) * a, miss);
-        if (!cd) continue;
-        p.all.critD += cd;
-        var eb = ei >= 0 ? p.enc[ei] : ei === -1 ? p.trash : null;
-        if (eb) eb.critD += cd;
+        if (cd) p.hlB[hb].forEach(function (bk) { bk.critD += cd; });
       }
-      p.hl = [];
+      p.hl = []; p.hlB = [];
+      // the healing-spec totals; fights played only in an off-spec are just noted
+      if (healing.length === 1) { p.all = healing[0].all; p.trash = healing[0].trash; p.enc = healing[0].enc; }
+      else {
+        p.all = newBucket("all", "Whole log", null); p.trash = newBucket("trash", "Trash and between pulls", null); p.enc = {};
+        healing.forEach(function (st) {
+          mergeInto(p.all, st.all); mergeInto(p.trash, st.trash);
+          for (var i in st.enc) {
+            if (!p.enc[i]) { p.enc[i] = newBucket("enc", st.enc[i].label, st.enc[i].start); p.enc[i].encIdx = +i; p.enc[i].kill = st.enc[i].kill; }
+            mergeInto(p.enc[i], st.enc[i]);
+          }
+        });
+      }
+      p.offEnc = {};
+      sets.forEach(function (st) { if (!p.healSigs[st.sig]) for (var i in st.enc) if (!p.enc[i]) p.offEnc[i] = true; });
       if (this.pendingInfo && this.pendingInfo[g]) { p.infos = this.pendingInfo[g].concat(p.infos); if (!p.info) p.info = p.infos[p.infos.length - 1].stats; }
       // measured real cost per spell|logged cost (the log shows the pre-talent base cost): the median of the drops
       // clustered around the most common one (regen ticks and refunds landing in between spread them a little)
@@ -340,10 +375,16 @@
   };
 
   // crit size: mean crit / mean non-crit over this healer's spells (weighted median); 1.5 when the log can't tell
-  function critMultiplier(p) {
-    var xs = [];
-    for (var k in p.all.heals) {
-      var r = p.all.heals[k];
+  function critMultiplier(healMaps) {
+    var xs = [], tot = {};
+    healMaps.forEach(function (hm) {
+      for (var k in hm) {
+        var r = hm[k], t = tot[k] || (tot[k] = { crits: 0, cSum: 0, nc: 0, ncSum: 0 });
+        t.crits += r.crits; t.cSum += r.cSum; t.nc += r.nc; t.ncSum += r.ncSum;
+      }
+    });
+    for (var k in tot) {
+      var r = tot[k];
       if (r.crits >= 5 && r.nc >= 10) xs.push([(r.cSum / r.crits) / (r.ncSum / r.nc), Math.min(r.crits, r.nc)]);
     }
     if (!xs.length) return 1.5;
@@ -484,6 +525,12 @@
     };
   }
 
+  function mergeInto(into, b) {
+    merge(into, b);
+    if (b.start != null && (into.start == null || b.start < into.start)) into.start = b.start;
+    if (b.end != null && (into.end == null || b.end > into.end)) into.end = b.end;
+  }
+
   function merge(into, b) {
     ["eff", "over", "critD", "nHeal", "nCrit", "spiritHeal", "tIn", "tOut", "drains", "deaths"].forEach(function (k) { into[k] += b[k]; });
     into.minMana = Math.min(into.minMana, b.minMana);
@@ -514,6 +561,7 @@
     // the talent set to use: the logged spec with the most known healer talents (logs can include an off-spec)
     var best = null, bestN = -1;
     (p.infos || []).forEach(function (inf) {
+      if (p.healSigs && inf.talents.length && !p.healSigs[sigOf(inf.talents)]) return;     // off-spec build
       var n = inf.talents.filter(function (x) { return TAL.entries[x.entry] != null; }).length;
       if (n >= bestN) { best = inf; bestN = n; }
     });
