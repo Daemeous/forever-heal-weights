@@ -94,23 +94,25 @@
     var healRate = (R.healCasts || 0) / act, castRate = (R.nCasts || 0) / act;
     var perCast = R.healCasts ? hd / R.healCasts : 0;     // healing per +1 healing, per heal cast
     var effRate = (r.eff || 0) / act, over = r.overPct || 0, manaRate = (r.spentHeal || 0) / act;
-    // on-use: ready at every pull if the cooldown is back by the next one (gap = time between pulls), else that share
-    var G = ctx.gap != null ? ctx.gap : 300;
-    var uses = !P.cd ? 1 : P.cd <= L + G ? Math.ceil(L / P.cd) : (L + G) / P.cd;
-    var up = function (d) { return Math.min(1, d * uses / L); };
+    // on-use: replayed over the log's pulls (cdModel) - how far into each fight the cooldown is back
+    var cdm = P.cd ? cdModel(P.cd, ctx) : null;
+    var uses = cdm ? cdm.uses(L) : 1;
+    var up = function (d) { return Math.min(1, cdm ? cdm.cover(d, L) / L : d / L); };
     var pct = function (x) { return Math.round(x * 100) + "%"; };
     var spells = {};
     (r.spells || []).forEach(function (x) { spells[x.name] = x; });
     var sum = function (names, f) { return (names || []).reduce(function (t, n) { return t + f(n); }, 0); };
-    var usesTxt = uses >= 1 ? uses + " use" + (uses > 1 ? "s" : "") + " per fight" : "ready for " + Math.round(uses * 100) + "% of fights";
+    var un = Math.abs(uses - Math.round(uses)) < 0.05 ? Math.round(uses) : +uses.toFixed(1);
+    var usesTxt = un + (un === 1 ? " use" : " uses") + " per fight" +
+      (cdm ? (cdm.n ? ", ready at the pull for " + pct(cdm.ready) + " of " + cdm.n + " " + cdm.what : ", no pulls in the log: ready every fight") : "");
     var none = function (names) { return "you don't cast " + names.join(" / "); };
     var cpd, n, pts, k;
     switch (P.kind) {
       case "buff":
-        return { v: statValue(P.s, w) * up(P.dur), how: P.dur >= P.cd ? "always up (lasts " + Math.round(P.dur / 60) + " min, cooldown " +
-                 Math.round(P.cd / 60) + " min)" : "up " + pct(up(P.dur)) + " of the fight (" + usesTxt + ")" };
+        return { v: statValue(P.s, w) * up(P.dur), how: P.dur >= P.cd && up(P.dur) > 0.99 ? "always up (lasts " + Math.round(P.dur / 60) +
+                 " min, cooldown " + Math.round(P.cd / 60) + " min)" : "up " + pct(up(P.dur)) + " of the fight (" + usesTxt + ")" };
       case "mana": {
-        var v = fightEq(lam * P.mana * uses), how = P.mana * uses + " mana (" + usesTxt + ")";
+        var v = fightEq(lam * P.mana * uses), how = Math.round(P.mana * uses) + " mana (" + usesTxt + ")";
         if (P.then) v += statValue(P.then.s, w) * up(P.then.dur);
         return { v: v, how: how };
       }
@@ -145,13 +147,44 @@
         return { v: fightEq(P.amount * P.targets * (1 - over) * uses), how: usesTxt + ", less your overheal " + pct(over) };
       case "absorb":
         return { v: fightEq(P.pct / 100 * effRate * P.dur * uses), how: usesTxt + ", every shield used" };
+      case "stat":
+        return { v: statValue(P.s, w), how: "" };
       case "proc": {
         var trig = P.spells ? sum(P.spells, function (x) { return (R.casts || {})[x] || 0; }) / act : castRate;
+        if (P.mana) {                     // mana on a share of casts
+          var pm = Math.min(1, P.chance / 100) * (R.nCasts || 0) * P.mana;
+          return { v: logEq(lam * pm), how: Math.round(pm) + " mana in this log (" + P.chance + "% of " + (R.nCasts || 0) + " casts)" };
+        }
         var p = Math.min(1, P.chance / 100) * trig, upt = 0;
         if (p > 0) upt = P.icd >= P.dur ? P.dur / (P.icd + 1 / p) : 1 - Math.exp(-p * P.dur);
         var s = P.s || [0, 0, 0, (ctx.spirit || 0) * (P.spiPct || 0) / 100, 0];
         return { v: statValue(s, w) * upt, how: P.spells && !trig ? none(P.spells) :
                  "up ~" + pct(upt) + (P.spiPct ? " (+" + Math.round(s[3]) + " Spirit)" : "") };
+      }
+      case "procHeal": {               // a HoT on a share of heals, at most once per icd
+        var ph = Math.min(healRate * P.chance / 100, P.icd ? 1 / P.icd : Infinity) * act;
+        var hh = ph * P.amount * (1 - over);
+        return { v: logEq(hh), how: Math.round(ph) + " procs in this log, less your overheal " + pct(over) };
+      }
+      case "lowMana":
+        return (r.minMana != null ? r.minMana : 1) <= 0.15 ? { v: fightEq(lam * P.mana), how: P.mana + " mana once per fight (your mana went under 15%)" }
+          : { v: 0, how: "your mana never went under 15% here" };
+      case "casting": {                // share of Spirit regen kept while casting
+        var spi = ctx.spirit || 0, rg = Math.min(spi / 4, 6.25 + spi / 8);
+        var cm = P.pct / 100 * rg * (r.tIn || 0);
+        return { v: logEq(lam * cm), how: Math.round(cm) + " mana in this log (" + Math.round(r.tIn || 0) + " s casting, " + spi + " Spirit)" };
+      }
+      case "spellCritMana": {
+        var cmn = sum(P.spells, function (x) { return spells[x] && spells[x].hits ? spells[x].mana * spells[x].crits / spells[x].hits : 0; }) * P.pct / 100;
+        return { v: logEq(lam * cmn), how: cmn ? Math.round(cmn) + " mana in this log" : none(P.spells) };
+      }
+      case "spellCritHeal": {
+        var ncr = sum(P.spells, function (x) { return spells[x] ? spells[x].crits : 0; });
+        return { v: logEq(ncr * P.amount * (1 - over)), how: ncr ? ncr + " crits in this log, every shield used" : none(P.spells) };
+      }
+      case "spellPct": {
+        var se = sum(P.spells, function (x) { return spells[x] ? spells[x].eff : 0; }) * P.pct / 100;
+        return { v: logEq(se), how: se ? "+" + P.pct + "% of your " + P.spells.join(" / ") + " healing" : none(P.spells) };
       }
       case "spellCost": {
         var sm = sum(P.spells, function (x) { return spells[x] ? spells[x].mana : 0; }) * P.pct / 100;
@@ -170,6 +203,83 @@
   }
 
   // w: weights relative to +1 healing ({healing, critRating, intellect, spirit, mp5})
+  // On-use cooldowns replayed over the log's pulls (ctx.pulls from engine.analyse: boss fights + trash pulls). Used at the
+  // first moment it's ready in a pull, again on cooldown. Saved for bosses (ctx.policy "boss", the default) it's only used
+  // in boss fights; "all" uses it on trash too. Each counted pull gives an offset (sec into the fight until it's ready),
+  // which is then applied to a fight of the chosen length L. Pulls counted: boss pulls, or every pull (ctx.countAll).
+  function cdModel(cd, ctx) {
+    var C = ctx._cd || (ctx._cd = {}), key = cd + "|" + ctx.policy + "|" + !!ctx.countAll;
+    if (C[key]) return C[key];
+    var pulls = ctx.pulls || [], anyBoss = pulls.some(function (x) { return x.boss; });
+    var bossOnly = ctx.policy !== "all" && anyBoss, countAll = ctx.countAll && !bossOnly;
+    var ready = -Infinity, offs = [];
+    pulls.forEach(function (pl) {
+      if (bossOnly && !pl.boss) return;
+      var o = Math.max(0, ready - pl.s);
+      if (pl.boss || countAll || !anyBoss) offs.push(o);
+      for (var t = pl.s + o; t < pl.e; t += cd) ready = t + cd;
+    });
+    var n = offs.length;
+    if (!n) offs = [0];
+    function uses(L) {
+      return offs.reduce(function (a, o) { return a + (o < L ? Math.floor((L - o - 1e-6) / cd) + 1 : 0); }, 0) / offs.length;
+    }
+    function cover(d, L) {
+      return offs.reduce(function (a, o) { for (var t = o; t < L; t += cd) a += Math.min(d, L - t); return a; }, 0) / offs.length;
+    }
+    return (C[key] = { uses: uses, cover: cover, n: n, what: countAll || !anyBoss ? "pulls" : "boss pulls",
+                       ready: n ? offs.filter(function (o) { return o === 0; }).length / n : 1 });
+  }
+
+  // ------------------------------------------------------------------ set bonuses (ctx.procs.sets, from tools/gen_procs.py)
+  // Only pieces in one-item slots count (every healer set is armor). Bonuses are worth their stats, or procValue.
+  var SINGLE = SLOTS.filter(function (s) { return !s[2]; });
+  function bonusValue(b, ctx) { return b.kind === "stat" ? statValue(b.s, ctx.w) : procValue(b, ctx).v; }
+  function setBonusV(S, k, ctx) {
+    return S.b.reduce(function (t, b) { return t + (b.k <= k ? bonusValue(b, ctx) : 0); }, 0);
+  }
+  // best number of pieces of set sid to wear on top of the per-slot picks (pick: slot label -> item with .v; cands(slot)
+  // -> that slot's candidates best first; locked: slots already given to another set). Gain can be negative.
+  function evalSet(sid, pick, cands, ctx, locked) {
+    var S = ctx.procs.sets[sid], mem = {};
+    S.items.forEach(function (i) { mem[i] = 1; });
+    var opts = [];
+    SINGLE.forEach(function (sl) {
+      var L = sl[0], cur = pick[L];
+      if (locked[L]) { if (mem[locked[L].id]) opts.push({ slot: L, it: locked[L], loss: 0 }); return; }
+      var p = cands(sl).filter(function (x) { return mem[x.id]; })[0];
+      if (p) opts.push({ slot: L, it: p, loss: (cur ? cur.v : 0) - p.v });
+    });
+    opts.sort(function (a, b) { return a.loss - b.loss; });
+    var best = null;
+    S.b.forEach(function (b) {
+      if (b.k > opts.length) return;
+      var use = opts.slice(0, b.k), loss = use.reduce(function (t, o) { return t + o.loss; }, 0), bv = setBonusV(S, b.k, ctx);
+      if (bv > 0 && (!best || bv - loss > best.gain)) best = { sid: sid, name: S.n, k: b.k, v: bv, gain: bv - loss, pieces: use };
+    });
+    return best || { sid: sid, name: S.n, k: 0, v: 0, gain: 0, pieces: [], have: opts.length };
+  }
+  // sets worth wearing, best gain first, each one locking its slots
+  function pickSets(sids, pick, cands, ctx) {
+    var locked = {}, chosen = [];
+    for (;;) {
+      var best = null;
+      sids.forEach(function (sid) { var e = evalSet(sid, pick, cands, ctx, locked); if (e.gain > 0.5 && (!best || e.gain > best.gain)) best = e; });
+      if (!best) break;
+      best.pieces.forEach(function (o) { locked[o.slot] = o.it; });
+      chosen.push(best);
+      sids = sids.filter(function (x) { return x !== best.sid; });
+    }
+    return { locked: locked, chosen: chosen };
+  }
+  function setsWith(ids, ctx) {
+    var have = {}, out = [];
+    ids.forEach(function (id) { have[id] = 1; });
+    var SS = ctx && ctx.procs && ctx.procs.sets || {};
+    for (var sid in SS) if (SS[sid].items.some(function (i) { return have[i]; })) out.push(sid);
+    return out;
+  }
+
   function bestInBags(exp, cls, level, w, ITEMS, ctx) {
     var I = ITEMS.items, unknown = 0, counts = {};
     exp.owned.forEach(function (id) { counts[id] = (counts[id] || 0) + 1; if (!I[id]) unknown++; });
@@ -187,9 +297,15 @@
     function worn(types, n) {
       return eq.filter(function (x) { return types.indexOf(x.inv) >= 0; }).sort(function (a, b) { return b.v - a.v; }).slice(0, n);
     }
+    // set bonuses: pieces you own, worn where the bonus beats the per-slot pick; what's worn now counts its active bonuses
+    var pick = {}, cc = {}, SP = { locked: {}, chosen: [] };
+    SINGLE.forEach(function (sl) { pick[sl[0]] = top(sl[1], 1)[0] || null; });
+    if (ctx && ctx.procs && ctx.procs.sets) {
+      SP = pickSets(setsWith(pool.map(function (x) { return x.id; }), ctx), pick, function (sl) { return cc[sl[0]] || (cc[sl[0]] = top(sl[1], 99)); }, ctx);
+    }
     var rows = [];
     SLOTS.forEach(function (s) {
-      var n = s[2] || 1, best = top(s[1], n), cur = worn(s[1], n);
+      var n = s[2] || 1, best = SP.locked[s[0]] ? [SP.locked[s[0]]] : top(s[1], n), cur = worn(s[1], n);
       // two-slot pairs (rings, trinkets): items already worn stay in their row, only the real swap shows
       var keep = [], restC = cur.slice(), restB = [];
       best.forEach(function (b) {
@@ -211,13 +327,25 @@
       return { id: a.id + "+" + b.id, name: a.name + " + " + b.name, v: a.v + b.v };
     }
     rows.push({ slot: "Weapons", cur: combo(cm, co), best: twoV > pairV ? b2 : combo(bm || cm, bo || co) });
+    if (ctx && ctx.procs && ctx.procs.sets) {
+      var SS = ctx.procs.sets, wornSets = [], wv = 0;
+      setsWith(eq.map(function (x) { return x.id; }), ctx).forEach(function (sid) {
+        var S = SS[sid], k = eq.filter(function (x) { return S.items.indexOf(+x.id) >= 0; }).length, v = setBonusV(S, k, ctx);
+        if (v > 0) { wornSets.push(S.n + " " + k + "pc"); wv += v; }
+      });
+      var bn = SP.chosen.map(function (c) { return c.name + " " + c.k + "pc"; }), bv = SP.chosen.reduce(function (t, c) { return t + c.v; }, 0);
+      if (wornSets.length || bn.length) {
+        rows.push({ slot: "Set bonuses", cur: wornSets.length ? { id: wornSets.join(), name: wornSets.join(", "), v: wv } : null,
+                    best: bn.length ? { id: bn.join(), name: bn.join(", "), v: bv } : null });
+      }
+    }
     var total = 0;
     rows.forEach(function (r) {
       r.gain = (r.best ? r.best.v : 0) - (r.cur ? r.cur.v : 0);
       r.change = !!(r.best && (!r.cur || r.best.id !== r.cur.id));
       total += r.gain;
     });
-    return { rows: rows, total: total, unknown: unknown, owned: exp.owned.length, equippedKnown: eq.length };
+    return { rows: rows, total: total, unknown: unknown, owned: exp.owned.length, equippedKnown: eq.length, sets: SP.chosen };
   }
 
   // ------------------------------------------------------------------ best in slot from the whole item database
@@ -241,6 +369,16 @@
       return pool.filter(function (x) { return types.indexOf(x.inv) >= 0; }).sort(function (a, b) { return b.v - a.v; }).slice(0, k);
     }
     var rows = SLOTS.map(function (sl) { return { slot: sl[0] + (sl[2] ? "s" : ""), items: top(sl[1], n + (sl[2] ? 1 : 0)) }; });
+    // set bonuses against the #1 pick per slot: each set on its own (best number of pieces), and the ones worth wearing
+    rows.sets = []; rows.setPick = [];
+    if (opts.ctx && opts.ctx.procs && opts.ctx.procs.sets) {
+      var pick = {}, cc = {}, cands = function (sl) { return cc[sl[0]] || (cc[sl[0]] = top(sl[1], 999)); };
+      SINGLE.forEach(function (sl) { pick[sl[0]] = top(sl[1], 1)[0] || null; });
+      var sids = setsWith(pool.map(function (x) { return x.id; }), opts.ctx);
+      rows.sets = sids.map(function (sid) { return evalSet(sid, pick, cands, opts.ctx, {}); }).filter(function (e) { return e.k; })
+        .sort(function (a, b) { return b.gain - a.gain; });
+      rows.setPick = pickSets(sids, pick, cands, opts.ctx).chosen;
+    }
     rows.push({ slot: "Two-hand", items: top(TWOH, n) });
     rows.push({ slot: "Main hand / one-hand", items: top(MAIN, n) });
     rows.push({ slot: "Off hand / shield", items: top(OFF, n) });
@@ -285,7 +423,7 @@
   }
 
   var api = { parseExport: parseExport, bestInBags: bestInBags, value: value, bisList: bisList, extrasValues: extrasValues,
-              procValue: procValue, procList: procList };
+              procValue: procValue, procList: procList, cdModel: cdModel, setBonusValue: bonusValue };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ForeverBags = api;
 })(this);

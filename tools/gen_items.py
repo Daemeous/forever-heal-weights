@@ -9,7 +9,9 @@ BUILD = sys.argv[1] if len(sys.argv) > 1 else "1.60.1.70959"
 TIER = {"Pre-raid": "P", "PvP": "V", "Raid": "R", "Later": "L", "Other faction": "F"}
 # items with an on-use / proc effect in docs/procs.js are kept even without scored stats (relics, trinkets)
 _pj = open(os.path.join(os.path.dirname(__file__), "..", "docs", "procs.js"), encoding="utf-8").read()
-PROC_IDS = set(json.loads(_pj[_pj.index("{"):_pj.rindex("};") + 1])["items"])
+_pd = json.loads(_pj[_pj.index("{"):_pj.rindex("};") + 1])
+# ... and so are pieces of a set with a scored bonus (they count towards the bonus)
+PROC_IDS = set(_pd["items"]) | {str(i) for st in _pd.get("sets", {}).values() for i in st["items"]}
 out = {}
 for it in _items.all_items(BUILD):
     st = it["stats"]

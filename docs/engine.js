@@ -118,6 +118,7 @@
         chain: {},           // sid -> open chain group
         last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], hlB: [], hlK: [], critMult: 1.5,
         offEnc: {}, healSigs: null, maxSeen: {},
+        segs: [],            // [start, end] of this player's healing activity (gaps over 20 sec split it): trash pulls
       };
       this.useSet(p, null);
     }
@@ -231,6 +232,8 @@
   Analyzer.prototype.heal = function (guid, name, E) {
     var p = this.player(guid, name), t = E.t;
     var s = this.S[E.sid];
+    var sg = p.segs[p.segs.length - 1];
+    if (sg && t - sg[1] <= 20) sg[1] = t; else p.segs.push([t, t]);
     if (s) p.cls[s.c] = (p.cls[s.c] || 0) + 1;
     var h = { sid: E.sid, name: E.spell, p: E.periodic ? 1 : 0, a: E.amount, o: E.over, crit: E.crit,
               hp: E.hp, max: E.maxHp, b: this.buckets(p, t), t: t, idx: 0 };
@@ -563,6 +566,20 @@
     // one steady value of mana for every fight: per-fight healing per mana is meaningless (a 30 sec fight is mostly
     // healed by HoTs / Prayer of Mending cast before the pull), so use the boss-fight (else whole-log) figure
     var lam = bossRow && bossRow.spentHeal > 2000 ? bossRow.hpm : whole.hpm;
+    // the pull timeline (for on-use cooldowns): boss fights, plus stretches of healing outside them (trash) of 10 sec+
+    var pulls = encs.map(function (b) { return { s: b.start, e: b.end, boss: true }; });
+    p.segs.forEach(function (sg) {
+      var parts = [sg.slice()];
+      an.encounters.forEach(function (e) {      // cut the boss fights out
+        parts = parts.reduce(function (o, x) {
+          if (x[1] <= e.start || x[0] >= e.end) o.push(x);
+          else { if (x[0] < e.start) o.push([x[0], e.start]); if (x[1] > e.end) o.push([e.end, x[1]]); }
+          return o;
+        }, []);
+      });
+      parts.forEach(function (x) { if (x[1] - x[0] >= 10) pulls.push({ s: x[0], e: x[1], boss: false }); });
+    });
+    pulls.sort(function (a, b) { return a.s - b.s; });
     if (opt.lambda > 0) lam = opt.lambda;
     return {
       player: { guid: guid, name: p.name, cls: p.mainClass, info: p.info },
@@ -576,7 +593,7 @@
           return { label: e.name, kill: e.kill, start: e.start, end: e.end, duration: e.end - e.start, offspec: true, healing: false,
                    eff: 0, over: 0, overPct: 0, minMana: 1, hpm: 0 };
         })).sort(function (a, b) { return a.start - b.start; }),
-      realCost: p.realCost,
+      realCost: p.realCost, pulls: pulls,
     };
   }
 

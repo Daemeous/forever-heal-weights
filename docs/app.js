@@ -315,7 +315,8 @@
     var r = result, scope = r[$("bagscope").value] || r.whole, b = scope.base || scope;
     var act = b.rates && b.rates.active > 0 ? b.rates.active : b.duration;
     return { scope: scope, w: scope[view], lambda: view === "manaLimited" ? (scope.lambda != null ? scope.lambda : r.lambda) : 0,
-             L: +$("fightlen").value || 180, gap: $("fightgap").value === "" ? 300 : +$("fightgap").value, r: b, h1: act > 0 ? b.healPerPoint / act : 0,
+             L: +$("fightlen").value || 180, r: b, h1: act > 0 ? b.healPerPoint / act : 0,
+             pulls: r.pulls || [], policy: $("cdpolicy").value, countAll: ["whole", "trash"].indexOf($("bagscope").value) >= 0,
              spirit: r.player.info ? r.player.info.spi || 0 : 0, procs: window.FOREVER_PROCS };
   }
   function renderBags() {
@@ -323,10 +324,14 @@
     var r = result, ctx = gearCtx(), w = ctx.w;
     var cls = bagExp.cls || r.player.cls, lvl = bagExp.level || 60;
     var B = window.ForeverBags.bestInBags(bagExp, cls, lvl, w, window.FOREVER_ITEMS, ctx);
-    function cell(x) { return x ? esc(x.name) + ' <span class="muted">' + x.v.toFixed(0) + "</span>" : '<span class="muted">empty, or an item without healer stats</span>'; }
+    function cell(x, set) {
+      return x ? esc(x.name) + ' <span class="muted">' + x.v.toFixed(0) + "</span>" :
+        '<span class="muted">' + (set ? "none" : "empty, or an item without healer stats") + "</span>";
+    }
     $("bags").innerHTML = "<thead><tr><th>Slot</th><th>Wearing</th><th>Best you own</th><th>Gain</th></tr></thead><tbody>" +
       B.rows.map(function (x) {
-        return "<tr" + (x.change ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur) + "</td><td>" + (x.change ? "<b>" + cell(x.best) + "</b>" : cell(x.best)) +
+        var st = x.slot === "Set bonuses";
+        return "<tr" + (x.change ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur, st) + "</td><td>" + (x.change ? "<b>" + cell(x.best, st) + "</b>" : cell(x.best, st)) +
           "</td><td>" + (x.change ? (x.gain >= 0 ? "+" : "−") + Math.abs(x.gain).toFixed(0) : "") + "</td></tr>";
       }).join("") + "</tbody>";
     $("bagnote").innerHTML = (bagExp.name ? esc(bagExp.name) + " \u00b7 " : "") + cls + " level " + lvl + " \u00b7 " + esc(bagExp.format || "export") +
@@ -339,7 +344,7 @@
   // ------------------------------------------------------------------ best in slot + enchants / consumables
   document.querySelectorAll(".bistier").forEach(function (c) { c.addEventListener("change", renderBis); });
   $("fightlen").addEventListener("input", function () { renderBags(); renderBis(); });
-  $("fightgap").addEventListener("input", function () { renderBags(); renderBis(); });
+  $("cdpolicy").addEventListener("change", function () { renderBags(); renderBis(); });
   function renderBis() {
     if (!result) return;
     var r = result, ctx = gearCtx(), w = ctx.w, FB = window.ForeverBags;
@@ -359,6 +364,22 @@
     var tip = function (x) { return x.note || x.proc ? ' title="' + esc(x.note || x.proc) + '"' : ""; };
     var bySlot = {};
     ex.enchants.forEach(function (e) { (bySlot[e.slot] = bySlot[e.slot] || []).push(e); });
+    // set bonuses: each set on its own against the #1 picks above, best number of pieces first
+    var picked = {};
+    (rows.setPick || []).forEach(function (c) { picked[c.sid] = c; });
+    $("sets").innerHTML = (rows.sets || []).length ? "<thead><tr><th>Set</th><th>Wear</th><th>Bonuses counted</th><th>Bonus worth</th><th>Net vs the picks above</th></tr></thead><tbody>" +
+      rows.sets.slice(0, 15).map(function (e) {
+        var S = ctx.procs.sets[e.sid];
+        var bon = S.b.filter(function (b) { return b.k <= e.k; }).map(function (b) {
+          var pv = b.kind === "stat" ? null : FB.procValue(b, ctx);
+          return b.k + "pc: " + esc(b.text) + (b.note ? ' <span class="note">(' + esc(b.note) + ")</span>" : "") +
+            ' <span class="muted">' + FB.setBonusValue(b, ctx).toFixed(0) + "</span>" + (pv && pv.how ? ' <span class="note">(' + esc(pv.how) + ")</span>" : "");
+        }).join("<br>");
+        var pieces = e.pieces.map(function (o) { return esc(o.slot) + ": " + esc(o.it.name) + (o.loss > 0.5 ? ' <span class="note">(−' + o.loss.toFixed(0) + ")</span>" : ""); }).join("<br>");
+        return "<tr" + (e.gain > 0.5 ? "" : ' class="dim"') + '><td class="enc">' + esc(e.name) + (picked[e.sid] ? ' <span class="tag">worth it</span>' : "") +
+          '</td><td class="enc" style="text-align:left">' + e.k + " pieces<br>" + pieces + '</td><td class="enc" style="text-align:left">' + bon +
+          "</td><td>" + e.v.toFixed(0) + "</td><td>" + (e.gain >= 0 ? "+" : "−") + Math.abs(e.gain).toFixed(0) + "</td></tr>";
+      }).join("") + "</tbody>" : '<tbody><tr><td class="note">No set with a healer bonus among these sources.</td></tr></tbody>';
     $("ench").innerHTML = "<thead><tr><th>Slot</th><th>Enchant</th><th>Worth</th></tr></thead><tbody>" +
       Object.keys(bySlot).map(function (sl) {
         return bySlot[sl].sort(function (a, b) { return b.v - a.v; }).map(function (e, i) {

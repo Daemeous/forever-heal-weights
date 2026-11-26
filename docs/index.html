@@ -206,8 +206,9 @@ a { color: var(--accent); }
       </div>
       <p class="note" style="margin-top:0">Paste the text from the <b>SimulationCraft</b> addon (<code>/simc</code>; needs a current version of the addon, and
         includes your bank once you've opened it with the addon loaded), or the export from the <b>voidsim.io</b> or <b>MythicSim Forever</b> addon.
-        The best gear you own for your weights (the view selected above) is picked per slot.
-        Enchants and set bonuses are not counted.</p>
+        The best gear you own for your weights (the view selected above) is picked per slot, then set pieces are swapped in where
+        the set bonus is worth more than what they replace. Item effects and set bonuses are valued as in the panels below; enchants
+        are not counted.</p>
       <textarea id="bagtext" rows="4" style="width:100%;font:13px ui-monospace,Consolas,monospace;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px" placeholder='{"gear":{"items":[{"id":...}]}, "bags":{"items":[...]}, ...}'></textarea>
       <div class="row" style="margin:8px 0"><button class="btn on" id="baggo">Find best gear</button><span id="bagnote" class="note"></span></div>
       <div class="tablewrap"><table id="bags"></table></div>
@@ -227,6 +228,12 @@ a { color: var(--accent); }
         <label class="note"><input type="checkbox" class="bistier" value="R"> Classic raids</label>
       </div>
       <div class="tablewrap"><table id="bis"></table></div>
+      <h3 style="margin:12px 0 4px">Set bonuses</h3>
+      <p class="note" style="margin-top:0">Each set on its own: the best number of its pieces to wear in place of the picks above (the piece
+        per slot, and what it costs against the pick in brackets), the bonuses that gets you, and the net change. <span class="tag">worth it</span> =
+        part of the best combination (sets don't share slots). Stat bonuses come from the game client; proc chances the client doesn't hold
+        are noted.</p>
+      <div class="tablewrap"><table id="sets"></table></div>
     </div>
 
     <div class="panel">
@@ -234,14 +241,17 @@ a { color: var(--accent); }
         <h2 style="margin:0">On-use and proc effects</h2>
         <div class="row">
           <label class="f">Fight length (sec)<input id="fightlen" type="number" min="10" step="10" value="180"></label>
-          <label class="f">Time between pulls (sec)<input id="fightgap" type="number" min="0" step="30" value="300"></label>
+          <label class="f sel">On-use items<select id="cdpolicy"><option value="boss">saved for boss fights</option>
+            <option value="all">used on every pull (trash too)</option></select></label>
         </div>
       </div>
       <p class="note" style="margin-top:0">Estimates of what each item's effect is worth to you, in +healing, worked out from your own log: how
         often you cast (and which spells), how much +1 healing adds per cast, your crit value per spell and your healing per mana.
-        On-use effects are used at the pull and again whenever they come off cooldown; a long cooldown is only ready for some
-        fights (fight length + time between pulls). Procs use the client's proc chance and internal cooldown. The fight length also
-        sets the enchant / consumable values below.
+        On-use effects are replayed over the pulls in your log (boss fights, plus trash: stretches of your healing outside them):
+        used as soon as they're ready in a pull, then on cooldown, so a long cooldown counts only as often as it was really back
+        for the next boss (wipes, runbacks and trash in between included). Saved for boss fights, trash doesn't use it up. How far
+        into each pull it was ready is then applied to a fight of the length set here. Procs use the client's proc chance and
+        internal cooldown. The fight length also sets the enchant / consumable values below.
         Mana effects are worth nothing in the throughput view. These values are also added to the items in Best in bags and Best in slot.
         Two on-use trinkets share a 15-20 sec cooldown when used together; that isn't counted.</p>
       <div class="tablewrap"><table id="procs"></table></div>
@@ -281,15 +291,15 @@ a { color: var(--accent); }
   </footer>
 </main>
 <!-- bump ?v= on every change so browsers (phones especially) fetch the new scripts -->
-<script src="spells.js?v=1795721690"></script>
-<script src="talents.js?v=1795721690"></script>
-<script src="items.js?v=1795721690"></script>
-<script src="bags.js?v=1795721690"></script>
-<script src="procs.js?v=1795721690"></script>
-<script src="extras.js?v=1795721690"></script>
-<script src="engine.js?v=1795721690"></script>
-<script src="wcl-config.js?v=1795721690"></script>
-<script src="wcl.js?v=1795721690"></script>
-<script src="app.js?v=1795721690"></script>
+<script src="spells.js?v=1795800000"></script>
+<script src="talents.js?v=1795800000"></script>
+<script src="items.js?v=1795800000"></script>
+<script src="bags.js?v=1795800000"></script>
+<script src="procs.js?v=1795800000"></script>
+<script src="extras.js?v=1795800000"></script>
+<script src="engine.js?v=1795800000"></script>
+<script src="wcl-config.js?v=1795800000"></script>
+<script src="wcl.js?v=1795800000"></script>
+<script src="app.js?v=1795800000"></script>
 </body>
 </html>

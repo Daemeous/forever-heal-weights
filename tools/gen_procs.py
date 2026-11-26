@@ -176,7 +176,88 @@ def fill(sid, m, item=None):
     return m
 
 
-out = {"items": {}, "enchants": {}}
+# ------------------------------------------------------------------ set bonuses
+# Passive stat bonuses are read from the client (aura 135 healing, 85 MP5, 29 Int / Spirit, 57 spell crit %, 189 crit
+# rating); everything else a healer could use is modelled by hand below (same kinds as the items, keyed by bonus spell).
+# Set membership: client ItemSparse.ItemSet, else wowtbc.gg's set_id (Forever's reworked Tier 0.5 pieces).
+SET_SPEC = {
+    450576: dict(kind="proc", mana=200, chance=5),                      # Devout / Virtuous: 5% on cast, 200 mana
+    450608: dict(kind="proc", mana=200, chance=5, note="proc chance assumed 5% (the client stores 5; no tooltip value)"),
+    450626: dict(kind="proc", s=[65, 0, 0, 0, 0], chance=4, aura=27775,
+                 note="proc chance assumed 4%, as Classic's Five Thunders (the client says 100%, Wowhead gives none)"),
+    27774: dict(kind="proc", s=[65, 0, 0, 0, 0], aura=27775),
+    450625: dict(kind="proc", s=[65, 0, 0, 0, 0], chance=4, aura=27499, note="proc chance assumed 4%"),
+    28802: dict(kind="proc", s=[0, 0, 0, 0, 24], aura=28804),           # Vestments of Faith 8pc: Epiphany
+    1321587: dict(kind="procHeal", amount=200, chance=100, icd=2,
+                  note="client: every heal, at most once per 2 sec; refreshes on the same target - an upper bound"),
+    1321560: dict(kind="lowMana", mana=200, note="once per 5 min, when your mana drops below 15%"),
+    21894: dict(kind="casting", pct=15),                                 # Green Dragon Mail 3pc
+    28743: dict(kind="spellCost", spells=["Healing Touch", "Regrowth", "Rejuvenation", "Tranquility"], pct=3),
+    28807: dict(kind="spellCost", spells=["Renew"], pct=12),
+    28818: dict(kind="spellCost", spells=["Healing Stream Totem", "Mana Spring Totem", "Mana Tide Totem", "Windfury Totem",
+                                          "Grace of Air Totem", "Strength of Earth Totem", "Tranquil Air Totem"], pct=12),
+    28719: dict(kind="spellCritMana", spells=["Healing Touch"], pct=30),
+    28809: dict(kind="spellCritHeal", spells=["Greater Heal"], amount=500, note="counts every shield as used: an upper bound"),
+    26171: dict(kind="spellPct", spells=["Renew"], pct=20, note="+3 sec on a 15 sec Renew = +20% Renew healing"),
+    1301703: dict(kind="none", note="cooldown, not scored"),
+    1301713: dict(kind="none", note="cooldown, not scored"),
+    26122: dict(kind="none", note="cast time, not scored"),
+    24457: dict(kind="none", note="cast time, not scored"),
+}
+HEALER_MASK = 2 | 16 | 64 | 1024
+
+
+def passive(sid):
+    """[healing, crit rating, Int, Spirit, MP5] of a passive stat bonus, or None when it has none"""
+    v, any_ = [0, 0, 0, 0, 0], False
+    for e in seff.get(str(sid), {}).values():
+        a, bp, mv = e["EffectAura"], float(e["EffectBasePointsF"] or 0), e["EffectMiscValue_0"]
+        if a == "135": v[0] = max(v[0], bp); any_ = True
+        elif a == "13" and mv == "126" and not v[0]: v[0] = bp; any_ = True     # spell power counts as healing
+        elif a == "57": v[1] += bp * 14; any_ = True
+        elif a == "189" and int(mv) & 1024: v[1] += bp; any_ = True
+        elif a == "29" and mv == "3": v[2] += bp; any_ = True
+        elif a == "29" and mv == "4": v[3] += bp; any_ = True
+        elif a == "85" and mv == "0": v[4] += bp; any_ = True
+    return [round(x) for x in v] if any_ and any(v) else None
+
+
+def build_sets():
+    wt = json.load(open(os.path.join(os.path.dirname(__file__), "..", "..", "wowtbc_data", "forever_gear.json"), encoding="utf-8"))
+    names = {r["ID"]: r["Name_lang"] for r in R("ItemSet")}
+    bonus = defaultdict(list)
+    for r in R("ItemSetSpell"):
+        bonus[r["ItemSetID"]].append((int(r["Threshold"]), int(r["SpellID"])))
+    members = defaultdict(list)
+    for it in _items.all_items(BUILD):
+        sid = it["set_id"] or (wt.get(str(it["id"])) or {}).get("set_id") or 0
+        if sid and (it["allow"] in (0, -1) or it["allow"] & HEALER_MASK):
+            members[str(sid)].append(it["id"])
+    sets = {}
+    for sid, ids in members.items():
+        bs = []
+        for k, sp in sorted(bonus.get(sid, [])):
+            st = passive(sp)
+            if sp in SET_SPEC:
+                m = dict(SET_SPEC[sp])
+                if m["kind"] == "proc":
+                    a = ao.get(str(sp))
+                    m.setdefault("chance", int(a["ProcChance"]) if a else 0)
+                    m["icd"] = int(a["ProcCategoryRecovery"]) / 1000 if a else 0
+                    m["dur"] = sdur(m.pop("aura")) if "aura" in m else 0
+            elif st:
+                m = dict(kind="stat", s=st)
+            else:
+                continue
+            m["k"] = k
+            m["text"] = clean(txt(sp), sp)
+            bs.append(m)
+        if any(b["kind"] != "none" for b in bs):
+            sets[sid] = dict(n=names.get(sid, ""), items=sorted(set(ids)), b=bs)
+    return sets
+
+
+out = {"items": {}, "enchants": {}, "sets": build_sets()}
 for iid, (sid, m) in SPEC.items():
     if not any(e["SpellID"] == str(sid) for e in effects[iid]):
         raise SystemExit(f"item {iid} has no effect spell {sid}")
@@ -189,6 +270,6 @@ with open(dst, "w", encoding="utf-8") as fh:
              "// proc chances and internal cooldowns from the Forever client " + BUILD + ".\n")
     fh.write("var FOREVER_PROCS = " + json.dumps(out, separators=(",", ":"), ensure_ascii=False) + ";\n")
     fh.write("if (typeof module !== 'undefined') module.exports = FOREVER_PROCS;\n")
-print(len(out["items"]), "items,", len(out["enchants"]), "enchants")
+print(len(out["items"]), "items,", len(out["enchants"]), "enchants,", len(out["sets"]), "sets")
 for k, v in list(out["items"].items())[:3] + list(out["enchants"].items()):
     print(k, {x: y for x, y in v.items() if x != "text"})
