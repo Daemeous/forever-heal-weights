@@ -127,14 +127,18 @@ a { color: var(--accent); }
     <details>
       <summary>More inputs</summary>
       <div class="row" style="margin-top:10px">
+        <label class="f">Spirit talents %<input id="spiBonus" type="number" step="1" min="0"></label>
+        <label class="f">Int → healing %<input id="intHeal" type="number" step="1" min="0"></label>
         <label class="f">Mana/sec per Spirit<input id="regen" type="number" step="0.005" min="0"></label>
         <label class="f">Crit % per Intellect<input id="critPerInt" type="number" step="0.0001" min="0"></label>
         <label class="f">Healing per mana (0 = auto)<input id="lambda" type="number" step="0.1" min="0"></label>
       </div>
     </details>
     <div class="note">
-      <p><b>Bonus healing</b>: the "Bonus Healing" figure from your character sheet (with the gear you wore in the log). It is the one input that matters most.
-        <b>Int talents</b>: e.g. Mental Strength / Heart of the Wild 10%. <b>Spirit → healing</b>: Priest Spiritual Guidance, 5% per point.
+      <p id="detected"></p>
+      <p><b>Bonus healing</b> is the input that matters most. It is worked out from your own heals when the log allows; otherwise use your character sheet's figure
+        (plus any Spirit or Intellect your talents turn into healing). <b>Int talents</b>: e.g. Mental Strength / Heart of the Wild 10%.
+        <b>Spirit → healing</b>: Priest Spiritual Guidance, 5% per point. <b>Spirit talents</b>: Druid Living Spirit. <b>Int → healing</b>: Shaman Mental Quickness.
         <b>Regen while casting</b>: Meditation / Mindfulness / Reflection, usually 50% if taken.</p>
     </div>
   </section>
@@ -181,10 +185,11 @@ a { color: var(--accent); }
   </footer>
 </main>
 <!-- bump ?v= on every change so browsers (phones especially) fetch the new scripts -->
-<script src="spells.js?v=202611261555"></script>
-<script src="engine.js?v=202611261555"></script>
-<script src="wcl-config.js?v=202611261555"></script>
-<script src="wcl.js?v=202611261555"></script>
-<script src="app.js?v=202611261555"></script>
+<script src="spells.js?v=202611261602"></script>
+<script src="talents.js?v=202611261602"></script>
+<script src="engine.js?v=202611261602"></script>
+<script src="wcl-config.js?v=202611261602"></script>
+<script src="wcl.js?v=202611261602"></script>
+<script src="app.js?v=202611261602"></script>
 </body>
 </html>

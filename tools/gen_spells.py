@@ -13,6 +13,8 @@ out = {}
 def add(heal_id, cls, learn, cast_id, effs=None):
     effs = effs or db.heal_effects(heal_id)
     rec = out.get(str(heal_id)) or dict(n=db.names.get(str(heal_id)), c=cls, l=learn)
+    if db.spell(cast_id)["cast"] == 0:
+        rec["i"] = 1                               # instant cast (Twin Disciplines)
     for e in effs:
         if e["kind"] == "absorb":
             continue
@@ -46,7 +48,7 @@ for cls, ids in db.learn.items():
 # heal spells the client links to their cast spell only implicitly
 def dummy(heal_id, cast_id):                      # Prayer of Mending: heal amount lives in the cast's dummy effect
     sp = db.spell(cast_id); e = sp["effects"][0]
-    out[str(heal_id)] = dict(n=sp["name"], c="Priest", l=sp["base_level"], d=[round(e["base"], 2), round(e["coef"], 4)])
+    out[str(heal_id)] = dict(n=sp["name"], c="Priest", l=sp["base_level"], d=[round(e["base"], 2), round(e["coef"], 4)], i=1)
 dummy(401863, 401859); dummy(1313379, 1240826); dummy(1313381, 1240827)
 for hid, lvl in ((5672, 20), (6371, 30), (6372, 40), (10460, 50), (10461, 60)):   # Healing Stream (totem ticks)
     e = db.heal_effects(hid)[0]

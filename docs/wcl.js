@@ -254,6 +254,13 @@
       case "combatantinfo":
         E.type = "info";
         E.stats = { str: e.strength, agi: e.agility, sta: e.stamina, int: e.intellect, spi: e.spirit };
+        // talents: the field name / shape isn't confirmed for Forever reports yet - accept the likely ones
+        var tl = e.talentTree || e.talents || [];
+        E.talents = (Array.isArray(tl) ? tl : []).map(function (x) {
+          if (Array.isArray(x)) return { entry: String(x[1]), rank: +x[2] || 1 };
+          return { entry: String(x.entryID != null ? x.entryID : x.entry != null ? x.entry : x.id),
+                   rank: +(x.rank != null ? x.rank : x.points != null ? x.points : 1) };
+        });
         break;
       default:
         if (!E.adv) return null;

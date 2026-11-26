@@ -3,11 +3,12 @@
 const fs = require("fs"), path = require("path"), readline = require("readline");
 const W = require(path.join(__dirname, "..", "docs", "engine.js"));
 const SPELLS = require(path.join(__dirname, "..", "docs", "spells.js"));
+const TALENTS = require(path.join(__dirname, "..", "docs", "talents.js"));
 const args = process.argv.slice(2), files = [], opt = {};
 for (let i = 0; i < args.length; i++) {
   if (args[i].startsWith("--")) opt[args[i].slice(2)] = args[++i]; else files.push(args[i]);
 }
-if (!files.length) { console.error("usage: node tools/cli.js <WoWCombatLog.txt> [--player Name] [--bonus 500] [--json out.json]"); process.exit(1); }
+if (!files.length) { console.error("usage: node tools/cli.js <WoWCombatLog.txt> [--player Name] [--bonus N (default: worked out from the log)] [--json out.json]"); process.exit(1); }
 (async () => {
   const an = new W.Analyzer(SPELLS);
   for (const f of files) {
@@ -20,7 +21,12 @@ if (!files.length) { console.error("usage: node tools/cli.js <WoWCombatLog.txt> 
   const pick = opt.player ? hs.filter(h => h.name.toLowerCase().startsWith(opt.player.toLowerCase())) : hs.slice(0, 1);
   const all = {};
   for (const h of pick) {
-    const o = W.defaults(h.cls);
+    const o = W.defaults(h.cls), det = W.detect(an, h.guid, TALENTS);
+    if (det.talents.length) Object.assign(o, det.inputs);
+    if (det.bonus) o.bonus = det.bonus.value;
+    console.log(`
+${h.name}: talents ${det.talents.map(t => t.name + " " + t.rank + "/" + t.max).join(", ") || "(none read)"}; ` +
+      `bonus healing ${det.bonus ? det.bonus.value + " (" + det.bonus.lo + ".." + det.bonus.hi + ")" : "not estimated"}`);
     for (const k of ["bonus", "regen", "casting", "sg", "intBonus", "critPerInt"]) if (opt[k] != null) o[k] = +opt[k];
     const r = W.analyse(an, h.guid, o); all[h.name] = r;
     const f = (x) => x.toFixed(2);

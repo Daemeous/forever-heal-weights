@@ -80,7 +80,7 @@
         all: newBucket("all", "Whole log", this.tLast), trash: newBucket("trash", "Trash and between pulls", this.tLast),
         enc: {},             // encounter idx -> bucket
         chain: {},           // sid -> open chain group
-        last: null, lastSpend: null, dead: false, pend: null, drops: {},
+        last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [],
       };
     }
     if (name && p.name === guid) p.name = name;
@@ -116,7 +116,11 @@
     var E = { t: t, type: "other", src: f[0], srcName: f[1], dst: f[4], sid: f[8], spell: f[9] };
     if (ev === "ENCOUNTER_START") { E.type = "encStart"; E.name = f[1]; }
     else if (ev === "ENCOUNTER_END") { E.type = "encEnd"; E.kill = f[4] === "1"; }
-    else if (ev === "COMBATANT_INFO") { E.type = "info"; E.stats = { str: +f[2], agi: +f[3], sta: +f[4], int: +f[5], spi: +f[6] }; }
+    else if (ev === "COMBATANT_INFO") {
+      E.type = "info"; E.stats = { str: +f[2], agi: +f[3], sta: +f[4], int: +f[5], spi: +f[6] };
+      var tl = body.match(/\[(\(\d+,\d+,\d+\)(?:,\(\d+,\d+,\d+\))*)\]/);   // talents: (node, entry, rank)
+      E.talents = tl ? tl[1].slice(1, -1).split("),(").map(function (x) { var v = x.split(","); return { entry: v[1], rank: +v[2] }; }) : [];
+    }
     else if (ev === "SPELL_SUMMON") E.type = "summon";
     else if (ev === "UNIT_DIED") E.type = "death";
     else if (ev === "SPELL_HEAL" || ev === "SPELL_PERIODIC_HEAL") {
@@ -138,7 +142,13 @@
     this.tLast = t;
     if (E.type === "encStart") { this.closeEncounter(t, null); this.enc = { idx: this.encounters.length, name: E.name, start: t }; this.encounters.push({ name: E.name, start: t, end: t, kill: null }); return; }
     if (E.type === "encEnd") { this.closeEncounter(t, E.kill); return; }
-    if (E.type === "info") { var pi = this.players[E.src]; if (pi) pi.info = E.stats; else (this.pendingInfo = this.pendingInfo || {})[E.src] = E.stats; return; }
+    if (E.type === "info") {   // several per log (one per pull): keep them all, detect() picks the healing spec
+      var rec = { t: t, stats: E.stats, talents: E.talents || [] };
+      var pi = this.players[E.src];
+      if (pi) { pi.info = E.stats; pi.infos.push(rec); }
+      else ((this.pendingInfo = this.pendingInfo || {})[E.src] = this.pendingInfo[E.src] || []).push(rec);
+      return;
+    }
     if (E.type === "summon") { if (E.src.indexOf("Player-") === 0) this.owner[E.dst] = E.src; return; }
     if (E.type === "death") {
       var pd = this.players[E.dst];
@@ -253,7 +263,7 @@
       var p = this.players[g];
       for (var sid in p.chain) this.flushChain(p, p.chain[sid]);
       p.chain = {};
-      if (!p.info && this.pendingInfo && this.pendingInfo[g]) p.info = this.pendingInfo[g];
+      if (this.pendingInfo && this.pendingInfo[g]) { p.infos = this.pendingInfo[g].concat(p.infos); if (!p.info) p.info = p.infos[p.infos.length - 1].stats; }
       // measured real cost per spell|logged cost (the log shows the pre-talent base cost): the median of the drops
       // clustered around the most common one (regen ticks and refunds landing in between spread them a little)
       p.realCost = {};
@@ -322,8 +332,8 @@
       var w = {
         healing: healD,
         critRating: wCrit / RATING_PER_CRIT,
-        intellect: wCrit * opt.critPerInt * ib + lam * manaInt,
-        spirit: opt.sg / 100 * healD + bucket.spiritHeal + lam * opt.regen * (bucket.tOut + opt.casting / 100 * bucket.tIn),
+        intellect: wCrit * opt.critPerInt * ib + (opt.intHeal || 0) / 100 * ib * healD + lam * manaInt,
+        spirit: (1 + (opt.spiBonus || 0) / 100) * (opt.sg / 100 * healD + bucket.spiritHeal + lam * opt.regen * (bucket.tOut + opt.casting / 100 * bucket.tIn)),
         mp5: lam * 0.2 * (bucket.tIn + bucket.tOut),
         critPct: wCrit,
       };
@@ -405,10 +415,67 @@
 
   function defaults(cls) {
     var d = CLASS_DEFAULTS[cls] || CLASS_DEFAULTS.Priest;
-    return { bonus: 500, regen: d.regen, casting: d.casting * 100, sg: d.sg, intBonus: d.intBonus, critPerInt: d.critPerInt, lambda: 0 };
+    return { bonus: 500, regen: d.regen, casting: d.casting * 100, sg: d.sg, intBonus: d.intBonus, critPerInt: d.critPerInt, lambda: 0,
+             spiBonus: 0, intHeal: 0 };
   }
 
-  var api = { Analyzer: Analyzer, analyse: analyse, healers: healers, defaults: defaults, downrank: downrank,
+  // ------------------------------------------------------------------ inputs from the log itself
+  // Talents (COMBATANT_INFO) give Int %, Spirit %, Spirit -> healing, Int -> healing, regen while casting and the
+  // healing multipliers; with those, each heal spell's average non-crit heal gives an estimate of bonus healing:
+  //   mean = T x (base + coefficient x B)  ->  B = (mean / T - base) / coefficient
+  // T = (1 + class-wide % (all heals / instant / HoT ticks), added) x (1 + spell-specific %) - the workbook convention.
+  function detect(an, guid, TAL) {
+    var p = an.players[guid], out = { talents: [], inputs: {}, bonus: null };
+    if (!p || !TAL) return out;
+    // the talent set to use: the logged spec with the most known healer talents (logs can include an off-spec)
+    var best = null, bestN = -1;
+    (p.infos || []).forEach(function (inf) {
+      var n = inf.talents.filter(function (x) { return TAL.entries[x.entry] != null; }).length;
+      if (n >= bestN) { best = inf; bestN = n; }
+    });
+    if (!best) return out;
+    var gen = { all: 0, instant: 0, periodic: 0 }, spec = {};
+    var v = { int: 0, spi: 0, sg: 0, intHeal: 0, casting: 0 };
+    best.talents.forEach(function (x) {
+      var ti = TAL.entries[x.entry];
+      if (ti == null) return;
+      var T = TAL.talents[ti], r = T.r[Math.min(x.rank, T.r.length) - 1] || {};
+      out.talents.push({ name: T.n, rank: x.rank, max: T.r.length, fx: r });
+      if (r.int) v.int += r.int;
+      if (r.spi) v.spi += r.spi;
+      if (r.sg) v.sg += r.sg;
+      if (r.intHeal) v.intHeal += r.intHeal;
+      if (r.casting) v.casting = Math.max(v.casting, r.casting);
+      (r.heal || []).forEach(function (h) {
+        if (h.spells) h.spells.forEach(function (n) { n = n.toLowerCase(); spec[n] = (spec[n] || 0) + h.pct; });
+        else for (var k in gen) if (h[k]) gen[k] += h.pct;
+      });
+    });
+    out.stats = best.stats;
+    out.inputs = { intBonus: v.int, spiBonus: v.spi, sg: v.sg, intHeal: v.intHeal, casting: v.casting };
+    // bonus healing: per spell (first target only, full-coefficient ranks, enough non-crit samples)
+    var est = [];
+    for (var k in p.all.heals) {
+      var r = p.all.heals[k], s = an.S[r.sid];
+      if (!s || s.spirit || r.idx !== 0 || r.nc < 15 || downrank(s.l) < 1) continue;
+      var e = r.p ? (s.h || s.d) : (s.d || s.h);
+      if (!e || !(e[1] > 0.05)) continue;
+      var nm = s.n.toLowerCase();
+      if (nm === "holy binding" || nm === "healing stream") continue;
+      var T = (1 + (gen.all + (s.i ? gen.instant : 0) + (r.p ? gen.periodic : 0)) / 100) * (1 + (spec[nm] || 0) / 100);
+      var B = (r.ncSum / r.nc / T - e[0]) / e[1];
+      est.push({ spell: s.n + (r.p && s.d ? " (HoT)" : ""), B: B, n: r.nc, w: r.nc * e[1] });
+    }
+    if (est.length) {
+      est.sort(function (a, b) { return a.B - b.B; });
+      var W = est.reduce(function (t, x) { return t + x.w; }, 0), acc = 0, med = est[0].B;
+      for (var i = 0; i < est.length; i++) { acc += est[i].w; if (acc >= W / 2) { med = est[i].B; break; } }
+      out.bonus = { value: Math.round(med), spells: est, lo: Math.round(est[0].B), hi: Math.round(est[est.length - 1].B) };
+    }
+    return out;
+  }
+
+  var api = { detect: detect, Analyzer: Analyzer, analyse: analyse, healers: healers, defaults: defaults, downrank: downrank,
               CLASS_DEFAULTS: CLASS_DEFAULTS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ForeverWeights = api;

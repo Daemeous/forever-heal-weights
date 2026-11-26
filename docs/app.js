@@ -2,7 +2,7 @@
   "use strict";
   var W = window.ForeverWeights, $ = function (id) { return document.getElementById(id); };
   var an = null, result = null, view = "throughput", opts = {};
-  var INPUTS = ["bonus", "intBonus", "sg", "casting", "regen", "critPerInt", "lambda"];
+  var INPUTS = ["bonus", "intBonus", "sg", "casting", "spiBonus", "intHeal", "regen", "critPerInt", "lambda"];
   var STATS = [["healing", "Healing"], ["critRating", "Crit rating"], ["intellect", "Intellect"], ["spirit", "Spirit"], ["mp5", "MP5"]];
 
   $("build").textContent = FOREVER_SPELLS.meta.build;
@@ -152,12 +152,36 @@
   $("who").addEventListener("change", pickHealer);
   INPUTS.forEach(function (k) { $(k).addEventListener("input", recompute); });
 
-  function storeKey(guid) { return "fhw:" + guid; }
+  // inputs start from what the log itself shows (talents, and bonus healing solved from the heals); edits last for
+  // this page visit only, so an old edit never silently overrides a new log
+  var detected = null;
   function pickHealer() {
     var guid = $("who").value, p = an.players[guid], d = W.defaults(p.mainClass);
-    try { var saved = JSON.parse(localStorage.getItem(storeKey(guid)) || "null"); if (saved) for (var k in saved) d[k] = saved[k]; } catch (e) {}
+    detected = W.detect(an, guid, window.FOREVER_TALENTS);
+    if (detected.talents.length) for (var k in detected.inputs) d[k] = detected.inputs[k];
+    if (detected.bonus) d.bonus = detected.bonus.value;
     INPUTS.forEach(function (k) { $(k).value = d[k]; });
+    renderDetected();
     recompute();
+  }
+
+  function renderDetected() {
+    var el = $("detected"), D = detected, parts = [];
+    if (!D || (!D.talents.length && !D.bonus)) {
+      el.innerHTML = "Couldn't read this healer's talents from the log, so the inputs are class defaults: please check them.";
+      return;
+    }
+    if (D.bonus) {
+      var sp = D.bonus.spells.map(function (x) { return esc(x.spell) + " " + Math.round(x.B); }).join(", ");
+      parts.push("<b>Bonus healing ≈ " + D.bonus.value + "</b>, worked out from your heals (" + D.bonus.spells.length + " spell" +
+        (D.bonus.spells.length > 1 ? "s" : "") + ": " + sp + "). It includes Spirit or Intellect turned into healing by talents, so it can be higher than the character sheet.");
+    } else parts.push("<b>Bonus healing</b> couldn't be worked out (too few heals from full-coefficient ranks); enter it from your character sheet.");
+    if (D.talents.length) {
+      var t = D.talents.filter(function (x) { var f = x.fx; return f.int || f.spi || f.sg || f.intHeal || f.casting || (f.heal && f.heal.length); })
+        .map(function (x) { return esc(x.name) + " " + x.rank + "/" + x.max; });
+      parts.push("<b>Talents read from the log</b>: " + (t.join(", ") || "none that change these inputs") + ".");
+    }
+    el.innerHTML = parts.join(" ");
   }
 
   function recompute() {
@@ -165,7 +189,6 @@
     if (!guid) return;
     var o = {};
     INPUTS.forEach(function (k) { o[k] = parseFloat($(k).value) || 0; });
-    try { localStorage.setItem(storeKey(guid), JSON.stringify(o)); } catch (e) {}
     opts = o;
     result = W.analyse(an, guid, o);
     render();
