@@ -107,17 +107,17 @@
       for (var i = 0; pairs.length < n; i++) pairs.push([restC[i] || null, restB[i] || restC[i] || null]);
       pairs.forEach(function (pr, i) { rows.push({ slot: s[0] + (n > 1 ? " " + (i + 1) : ""), cur: pr[0], best: pr[1] }); });
     });
-    // weapons: best two-hander vs best main hand + off hand
+    // weapons: best two-hander vs best main hand + off hand, shown as one row with the net gain
     var b2 = top(TWOH, 1)[0], bm = top(MAIN, 1)[0], bo = top(OFF, 1)[0];
     var pairV = (bm ? bm.v : 0) + (bo ? bo.v : 0), twoV = b2 ? b2.v : -1;
     var cm = worn(MAIN.concat(TWOH), 1)[0] || null, co = worn(OFF, 1)[0] || null;
-    if (twoV > pairV) {
-      rows.push({ slot: "Two-hand", cur: cm, best: b2 });
-      if (co) rows.push({ slot: "Off hand", cur: co, best: null });
-    } else {
-      rows.push({ slot: "Main hand", cur: cm, best: bm || cm });
-      rows.push({ slot: "Off hand", cur: co, best: bo || co });
+    function combo(a, b) {
+      if (!a && !b) return null;
+      if (!b) return a;
+      if (!a) return b;
+      return { id: a.id + "+" + b.id, name: a.name + " + " + b.name, v: a.v + b.v };
     }
+    rows.push({ slot: "Weapons", cur: combo(cm, co), best: twoV > pairV ? b2 : combo(bm || cm, bo || co) });
     var total = 0;
     rows.forEach(function (r) {
       r.gain = (r.best ? r.best.v : 0) - (r.cur ? r.cur.v : 0);

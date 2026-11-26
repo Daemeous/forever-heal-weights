@@ -297,7 +297,7 @@
     $("bags").innerHTML = "<thead><tr><th>Slot</th><th>Wearing</th><th>Best you own</th><th>Gain</th></tr></thead><tbody>" +
       B.rows.map(function (x) {
         return "<tr" + (x.change ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur) + "</td><td>" + (x.change ? "<b>" + cell(x.best) + "</b>" : cell(x.best)) +
-          "</td><td>" + (x.change ? "+" + x.gain.toFixed(0) : "") + "</td></tr>";
+          "</td><td>" + (x.change ? (x.gain >= 0 ? "+" : "−") + Math.abs(x.gain).toFixed(0) : "") + "</td></tr>";
       }).join("") + "</tbody>";
     $("bagnote").innerHTML = (bagExp.name ? esc(bagExp.name) + " \u00b7 " : "") + cls + " level " + lvl + " \u00b7 " + esc(bagExp.format || "export") +
       (bagExp.bank ? " (bank included)" : " (equipped + bags; no bank in this export)") + " \u00b7 " + B.owned + " items read" +
