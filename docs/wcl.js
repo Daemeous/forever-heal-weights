@@ -27,7 +27,8 @@
   // ------------------------------------------------------------------ auth (Authorization Code + PKCE, no secret)
   function token() {
     try {
-      var t = JSON.parse(sessionStorage.getItem("wcl:token") || "null");
+      // "remember me" keeps the token in localStorage (this device, until it expires); otherwise only for this tab
+      var t = JSON.parse(sessionStorage.getItem("wcl:token") || localStorage.getItem("wcl:token") || "null");
       if (t && t.expires > Date.now() + 60000) return t.access;
     } catch (e) {}
     return null;
@@ -68,12 +69,25 @@
         return j;
       });
     }).then(function (j) {
-      sessionStorage.setItem("wcl:token", JSON.stringify({ access: j.access_token, expires: Date.now() + 1000 * (j.expires_in || 3600) }));
+      var tok = JSON.stringify({ access: j.access_token, expires: Date.now() + 1000 * (j.expires_in || 3600) });
+      if (remember()) localStorage.setItem("wcl:token", tok); else sessionStorage.setItem("wcl:token", tok);
       return saved.resume;
     });
   }
 
-  function signOut() { try { sessionStorage.removeItem("wcl:token"); } catch (e) {} }
+  function signOut() {
+    try { sessionStorage.removeItem("wcl:token"); } catch (e) {}
+    try { localStorage.removeItem("wcl:token"); } catch (e) {}
+  }
+  function remember(v) {
+    try {
+      if (v === undefined) return localStorage.getItem("wcl:remember") === "1";
+      localStorage.setItem("wcl:remember", v ? "1" : "0");
+      var t = sessionStorage.getItem("wcl:token") || localStorage.getItem("wcl:token");
+      if (t && v) { localStorage.setItem("wcl:token", t); sessionStorage.removeItem("wcl:token"); }
+      if (t && !v) { sessionStorage.setItem("wcl:token", t); localStorage.removeItem("wcl:token"); }
+    } catch (e) { return false; }
+  }
 
   // ------------------------------------------------------------------ API
   function gql(query, vars) {
@@ -247,7 +261,7 @@
     return E;
   }
 
-  var api = { reportCode: reportCode, fightFromUrl: fightFromUrl, signIn: signIn, completeSignIn: completeSignIn, signOut: signOut,
+  var api = { reportCode: reportCode, fightFromUrl: fightFromUrl, signIn: signIn, completeSignIn: completeSignIn, signOut: signOut, remember: remember,
               signedIn: function () { return !!token(); }, configured: function () { return !!CLIENT_ID; },
               loadReport: loadReport, loadEvents: loadEvents, debugInfo: function () { return debug; }, feed: feed, convert: convert, SITE: SITE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

@@ -137,6 +137,9 @@
     a.href = URL.createObjectURL(blob); a.download = "wcl-sample-" + r.code + ".json"; a.classList.remove("hidden");
   }
 
+  $("wclremember").checked = WCL.remember();
+  $("wclremember").addEventListener("change", function () { WCL.remember($("wclremember").checked); });
+
   // finish a sign-in redirect, then continue loading the report that started it
   try { if (localStorage.getItem("fhw:src") === "wcl") setSource("wcl"); } catch (e) {}
   WCL.completeSignIn().then(function (resume) {
