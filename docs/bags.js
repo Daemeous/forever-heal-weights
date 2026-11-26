@@ -127,7 +127,53 @@
     return { rows: rows, total: total, unknown: unknown, owned: exp.owned.length, equippedKnown: eq.length };
   }
 
-  var api = { parseExport: parseExport, bestInBags: bestInBags, value: value };
+  // ------------------------------------------------------------------ best in slot from the whole item database
+  // opts.tiers: which sources to allow - P dungeon/quest/crafted/rep/vendor, V PvP, R Classic raid (not in Forever's
+  // raids), L later content, F other faction, "" no known source. opts.n: how many per slot.
+  function bisList(cls, level, w, ITEMS, opts) {
+    var I = ITEMS.items, n = opts.n || 3, tiers = opts.tiers || { P: 1 };
+    function allowed(r) {
+      var t = r[13] || "";
+      if (!t) return !!tiers[""];
+      for (var i = 0; i < t.length; i++) if (tiers[t[i]]) return true;
+      return false;
+    }
+    var pool = [];
+    for (var id in I) {
+      var r = I[id];
+      if (!usable(r, cls, level) || !allowed(r)) continue;
+      pool.push({ id: +id, name: r[0], inv: r[1], v: value(r, w), src: r[14] || "source unknown", tier: r[13] || "", unique: r[12] });
+    }
+    function top(types, k) {
+      return pool.filter(function (x) { return types.indexOf(x.inv) >= 0; }).sort(function (a, b) { return b.v - a.v; }).slice(0, k);
+    }
+    var rows = SLOTS.map(function (sl) { return { slot: sl[0] + (sl[2] ? "s" : ""), items: top(sl[1], n + (sl[2] ? 1 : 0)) }; });
+    rows.push({ slot: "Two-hand", items: top(TWOH, n) });
+    rows.push({ slot: "Main hand / one-hand", items: top(MAIN, n) });
+    rows.push({ slot: "Off hand / shield", items: top(OFF, n) });
+    return rows;
+  }
+
+  function statValue(st, w) {
+    return w.healing * st[0] + w.critRating * st[1] + w.intellect * st[2] + w.spirit * st[3] + w.mp5 * st[4];
+  }
+
+  // enchants and consumables in +healing equivalents. ctx: { w, lambda, h1 (healing per +1 healing per second),
+  // L (fight length, sec) }. Mana is worth lambda healing each (0 in the throughput view).
+  function extrasValues(EX, ctx) {
+    var w = ctx.w, L = Math.max(10, ctx.L || 180);
+    var ench = EX.enchants.map(function (e) { return Object.assign({ v: statValue(e.s, w) }, e); });
+    var cons = EX.consumables.map(function (c) {
+      var uses = c.cd ? Math.ceil(L / c.cd) : 1;
+      var uptime = c.up ? Math.min(1, c.up * uses / L) : 1;
+      var manaHeal = ((c.mana || 0) * uses + (c.maxMana || 0)) * ctx.lambda;
+      var manaEq = ctx.h1 > 0 ? manaHeal / (ctx.h1 * L) : 0;
+      return Object.assign({ v: statValue(c.s, w) * uptime + manaEq, manaHeal: manaHeal, uses: uses, uptime: uptime }, c);
+    });
+    return { enchants: ench, consumables: cons };
+  }
+
+  var api = { parseExport: parseExport, bestInBags: bestInBags, value: value, bisList: bisList, extrasValues: extrasValues };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ForeverBags = api;
 })(this);

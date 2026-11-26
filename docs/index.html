@@ -193,6 +193,37 @@ a { color: var(--accent); }
       <div class="tablewrap"><table id="bags"></table></div>
     </div>
 
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Best in slot (every item)</h2>
+        <span class="note">uses the "Weights from" choice above</span>
+      </div>
+      <p class="note" style="margin-top:0">The top items in the game for your weights, with where they come from. Classic raid loot is off by default:
+        Forever's raids are not the Classic ones.</p>
+      <div class="row" style="margin-bottom:8px">
+        <label class="note"><input type="checkbox" class="bistier" value="P" checked> dungeons, quests, crafting, reputation, vendors</label>
+        <label class="note"><input type="checkbox" class="bistier" value="V"> PvP</label>
+        <label class="note"><input type="checkbox" class="bistier" value=""> no known source (world drops, new items)</label>
+        <label class="note"><input type="checkbox" class="bistier" value="R"> Classic raids</label>
+      </div>
+      <div class="tablewrap"><table id="bis"></table></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Enchants and consumables</h2>
+        <label class="f">Fight length (sec)<input id="fightlen" type="number" min="10" step="10" value="180"></label>
+      </div>
+      <p class="note" style="margin-top:0">Worth in +healing, like the gear values. Mana items (potions, runes, the flask) only count in the mana-limited
+        view, converted through your healing per mana, and only matter if you would otherwise run out; potions and runes assume one
+        use per 2 minutes of fight. Which items exist in Forever and the food values: method.gg's Forever list (beta, 2 Nov 2026); other
+        values from the game client. <span class="tag">new</span> = new or changed in Forever. Flasks and elixirs can be active together in Forever.</p>
+      <div class="cards">
+        <div><h3 style="margin:4px 0 8px">Enchants</h3><div class="tablewrap"><table id="ench"></table></div></div>
+        <div><h3 style="margin:4px 0 8px">Consumables</h3><div class="tablewrap"><table id="cons"></table></div></div>
+      </div>
+    </div>
+
     <div class="panel note">
       <h2 style="color:var(--ink)">How it works</h2>
       <p><b>+1 bonus healing</b>: for every heal that did not overheal, how much one more point would have added (the spell's coefficient from the Forever client data,
@@ -212,13 +243,14 @@ a { color: var(--accent); }
   </footer>
 </main>
 <!-- bump ?v= on every change so browsers (phones especially) fetch the new scripts -->
-<script src="spells.js?v=202611261708"></script>
-<script src="talents.js?v=202611261708"></script>
-<script src="items.js?v=202611261708"></script>
-<script src="bags.js?v=202611261708"></script>
-<script src="engine.js?v=202611261708"></script>
-<script src="wcl-config.js?v=202611261708"></script>
-<script src="wcl.js?v=202611261708"></script>
-<script src="app.js?v=202611261708"></script>
+<script src="spells.js?v=202611261726"></script>
+<script src="talents.js?v=202611261726"></script>
+<script src="items.js?v=202611261726"></script>
+<script src="bags.js?v=202611261726"></script>
+<script src="extras.js?v=202611261726"></script>
+<script src="engine.js?v=202611261726"></script>
+<script src="wcl-config.js?v=202611261726"></script>
+<script src="wcl.js?v=202611261726"></script>
+<script src="app.js?v=202611261726"></script>
 </body>
 </html>

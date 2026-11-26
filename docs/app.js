@@ -247,6 +247,7 @@
 
     renderSpellScopes();
     renderBags();
+    renderBis();
     var rc = r.realCost, keys = Object.keys(rc).sort();
     $("costs").innerHTML = keys.length ? "<table><tr><th>Spell</th><th>Logged cost</th><th>Real cost</th></tr>" + keys.map(function (k) {
       var i = k.lastIndexOf("|");
@@ -287,7 +288,7 @@
     catch (e) { bagExp = null; $("bagnote").innerHTML = '<span class="err">' + esc(e.message) + "</span>"; $("bags").innerHTML = ""; return; }
     renderBags();
   });
-  $("bagscope").addEventListener("change", renderBags);
+  $("bagscope").addEventListener("change", function () { renderBags(); renderBis(); });
   function renderBags() {
     if (!bagExp || !result) return;
     var r = result, src = r[$("bagscope").value] || r.whole, w = src[view];
@@ -304,6 +305,40 @@
       (B.unknown ? " (" + B.unknown + " have no healer stats or aren't in the item data)" : "") +
       " \u00b7 values in +healing (" + (view === "manaLimited" ? "mana-limited" : "throughput") + ", " + $("bagscope").selectedOptions[0].text.toLowerCase() + ")" +
       " \u00b7 <b>total gain +" + B.total.toFixed(0) + " healing</b>";
+  }
+
+  // ------------------------------------------------------------------ best in slot + enchants / consumables
+  document.querySelectorAll(".bistier").forEach(function (c) { c.addEventListener("change", renderBis); });
+  $("fightlen").addEventListener("input", renderBis);
+  function renderBis() {
+    if (!result) return;
+    var r = result, scope = r[$("bagscope").value] || r.whole, w = scope[view], FB = window.ForeverBags;
+    var tiers = {};
+    document.querySelectorAll(".bistier").forEach(function (c) { if (c.checked) tiers[c.value] = 1; });
+    var rows = FB.bisList(r.player.cls, 60, w, window.FOREVER_ITEMS, { n: 3, tiers: tiers });
+    function it(x) { return x ? esc(x.name) + ' <span class="muted">' + x.v.toFixed(0) + '</span><br><span class="note">' + esc(x.src) + "</span>" : ""; }
+    $("bis").innerHTML = "<thead><tr><th>Slot</th><th>Best</th><th>2nd</th><th>3rd</th><th>4th</th></tr></thead><tbody>" +
+      rows.map(function (x) {
+        return '<tr><td>' + x.slot + "</td>" + [0, 1, 2, 3].map(function (i) { return '<td class="enc" style="text-align:left">' + it(x.items[i]) + "</td>"; }).join("") + "</tr>";
+      }).join("") + "</tbody>";
+    var L = +$("fightlen").value || 180;
+    var ex = FB.extrasValues(window.FOREVER_EXTRAS, { w: w, lambda: view === "manaLimited" ? r.lambda : 0, h1: scope.duration > 0 ? scope.healPerPoint / scope.duration : 0, L: L });
+    var tagNew = function (x) { return x.new ? ' <span class="tag">new</span>' : ""; };
+    var tip = function (x) { return x.note || x.proc ? ' title="' + esc(x.note || x.proc) + '"' : ""; };
+    var bySlot = {};
+    ex.enchants.forEach(function (e) { (bySlot[e.slot] = bySlot[e.slot] || []).push(e); });
+    $("ench").innerHTML = "<thead><tr><th>Slot</th><th>Enchant</th><th>Worth</th></tr></thead><tbody>" +
+      Object.keys(bySlot).map(function (sl) {
+        return bySlot[sl].sort(function (a, b) { return b.v - a.v; }).map(function (e, i) {
+          return "<tr" + (i ? ' class="dim"' : "") + tip(e) + "><td>" + (i ? "" : esc(sl)) + '</td><td class="enc">' + esc(e.n) + tagNew(e) +
+            (e.proc ? ' <span class="note">(proc, not scored)</span>' : "") + "</td><td>" + e.v.toFixed(0) + "</td></tr>";
+        }).join("");
+      }).join("") + "</tbody>";
+    $("cons").innerHTML = "<thead><tr><th>Item</th><th>Type</th><th>Worth</th><th>Mana \u2192 healing</th></tr></thead><tbody>" +
+      ex.consumables.sort(function (a, b) { return b.v - a.v; }).map(function (c) {
+        return "<tr" + tip(c) + '><td class="enc">' + esc(c.n) + tagNew(c) + "</td><td>" + c.kind + "</td><td>" + c.v.toFixed(0) +
+          "</td><td>" + (c.manaHeal ? Math.round(c.manaHeal).toLocaleString() + (c.uses > 1 ? " (" + c.uses + " uses)" : "") : "") + "</td></tr>";
+      }).join("") + "</tbody>";
   }
 
   // ------------------------------------------------------------------ copy a one-line summary (Discord etc.)
