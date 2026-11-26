@@ -114,8 +114,8 @@
     $("progress").style.display = "block"; $("progress").firstElementChild.style.width = "0%";
     status("Downloading " + h.name + "'s events…");
     var t0 = performance.now();
-    WCL.loadEvents(rep, id, function (n, next, end) {
-      $("progress").firstElementChild.style.width = (next ? 100 * next / end : 100).toFixed(1) + "%";
+    WCL.loadEvents(rep, id, function (n, frac) {
+      $("progress").firstElementChild.style.width = (100 * Math.min(1, frac)).toFixed(1) + "%";
       status("Downloaded " + n.toLocaleString() + " events…");
     }).then(function (events) {
       wclSample(rep, events);
@@ -131,7 +131,7 @@
   function wclSample(r, events) {
     var pick = {}, out = [];
     events.forEach(function (e) { var k = e.type; pick[k] = (pick[k] || 0) + 1; if (pick[k] <= 25) out.push(e); });
-    var blob = new Blob([JSON.stringify({ report: { code: r.code, startTime: r.startTime, fights: r.fights.slice(0, 15),
+    var blob = new Blob([JSON.stringify({ queries: WCL.debugInfo(), report: { code: r.code, startTime: r.startTime, endTime: r.endTime, fights: r.fights.slice(0, 15),
       actors: r.masterData.actors.length, sampleActors: r.masterData.actors.slice(0, 15) }, typeCounts: pick, events: out }, null, 1)], { type: "application/json" });
     var a = $("wcldebug");
     a.href = URL.createObjectURL(blob); a.download = "wcl-sample-" + r.code + ".json"; a.classList.remove("hidden");

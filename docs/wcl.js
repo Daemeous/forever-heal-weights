@@ -107,7 +107,7 @@
             return attempt(i + 1);
           }
           try { sessionStorage.setItem("wcl:api", url); } catch (e) {}
-          if (j.errors && j.errors.length && !j.data) throw new Error("Warcraft Logs: " + j.errors.map(function (e) { return e.message; }).join("; "));
+          if (j.errors && j.errors.length) throw new Error("Warcraft Logs: " + j.errors.map(function (e) { return e.message; }).join("; "));
           return j.data;
         });
       }, function (err) { tried.push(url.replace(/^https:\/\//, "") + " network error: " + err.message); return attempt(i + 1); });
@@ -119,8 +119,8 @@
     " fights{id name startTime endTime kill encounterID}" +
     " masterData{actors{id name type subType server petOwner} abilities{gameID name}}}}}";
   var TABLE_Q = "query($code:String!,$s:Float!,$e:Float!){reportData{report(code:$code){table(dataType:Healing,startTime:$s,endTime:$e)}}}";
-  var EVENTS_Q = "query($code:String!,$s:Float!,$e:Float!,$f:String){reportData{report(code:$code){" +
-    "events(startTime:$s,endTime:$e,dataType:All,includeResources:true,limit:" + PAGE + ",filterExpression:$f){data nextPageTimestamp}}}}";
+  var EVENTS_Q = "query($code:String!,$s:Float!,$e:Float!,$src:Int,$tgt:Int){reportData{report(code:$code){" +
+    "events(startTime:$s,endTime:$e,dataType:All,includeResources:true,limit:" + PAGE + ",sourceID:$src,targetID:$tgt){data nextPageTimestamp}}}}";
 
   // report metadata + the healers in it (Priest/Paladin/Shaman/Druid with healing done, most first)
   function loadReport(code) {
@@ -141,21 +141,44 @@
     });
   }
 
-  // every event involving one healer (and their pets/totems), page by page; onPage(count) for progress
+  // every event involving one healer: everything they did (sourceID), everything done to them (targetID), and their
+  // pets / totems' events, page by page, merged in time order. onPage(count, progress 0..1) for the progress bar.
+  var debug = [];
   function loadEvents(rep, actorId, onPage) {
     var pets = rep.masterData.actors.filter(function (a) { return a.petOwner === actorId; }).map(function (a) { return a.id; });
-    var ids = [actorId].concat(pets).join(",");
-    var filter = "source.id in (" + ids + ") or target.id = " + actorId;
-    var end = rep.endTime - rep.startTime, all = [];
-    function page(s) {
-      return gql(EVENTS_Q, { code: rep.code, s: s, e: end, f: filter }).then(function (d) {
-        var ev = d.reportData.report.events;
-        all = all.concat(ev.data || []);
-        if (onPage) onPage(all.length, ev.nextPageTimestamp, end);
-        return ev.nextPageTimestamp ? page(ev.nextPageTimestamp) : all;
+    var s0 = 0, e0 = rep.endTime - rep.startTime;
+    if (rep.fights && rep.fights.length) {
+      s0 = Math.min.apply(null, rep.fights.map(function (f) { return f.startTime; }));
+      e0 = Math.max.apply(null, rep.fights.map(function (f) { return f.endTime; }));
+    }
+    var jobs = [{ sourceID: actorId }, { targetID: actorId }].concat(pets.map(function (id) { return { sourceID: id }; }));
+    var all = [], seen = {}, j = 0;
+    debug = [];
+    function page(job, s, info) {
+      var vars = { code: rep.code, s: s, e: e0, src: job.sourceID != null ? job.sourceID : null, tgt: job.targetID != null ? job.targetID : null };
+      return gql(EVENTS_Q, vars).then(function (d) {
+        var ev = d.reportData.report.events || {}, data = ev.data || [];
+        info.pages++; info.events += data.length;
+        if (info.pages === 1) info.first = data.slice(0, 3);
+        data.forEach(function (e) {
+          var k = e.timestamp + "|" + e.type + "|" + e.sourceID + "|" + e.targetID + "|" + e.abilityGameID + "|" + (e.amount || 0) + "|" + (e.tick ? 1 : 0);
+          if (job.targetID != null && seen[k]) return;          // already have it from the sourceID pass
+          seen[k] = 1; all.push(e);
+        });
+        if (onPage) onPage(all.length, (j + (ev.nextPageTimestamp ? (ev.nextPageTimestamp - s0) / (e0 - s0) : 1)) / jobs.length);
+        return ev.nextPageTimestamp ? page(job, ev.nextPageTimestamp, info) : null;
       });
     }
-    return page(0);
+    function next() {
+      if (j >= jobs.length) {
+        all.sort(function (x, y) { return x.timestamp - y.timestamp; });
+        return all;
+      }
+      var info = { job: jobs[j], range: [s0, e0], pages: 0, events: 0 };
+      debug.push(info);
+      return page(jobs[j], s0, info).then(function () { j++; return next(); });
+    }
+    return next();
   }
 
   // ------------------------------------------------------------------ adapter: API events -> analyser events
@@ -226,7 +249,7 @@
 
   var api = { reportCode: reportCode, fightFromUrl: fightFromUrl, signIn: signIn, completeSignIn: completeSignIn, signOut: signOut,
               signedIn: function () { return !!token(); }, configured: function () { return !!CLIENT_ID; },
-              loadReport: loadReport, loadEvents: loadEvents, feed: feed, convert: convert, SITE: SITE };
+              loadReport: loadReport, loadEvents: loadEvents, debugInfo: function () { return debug; }, feed: feed, convert: convert, SITE: SITE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ForeverWCL = api;
 })(this);
