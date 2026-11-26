@@ -1,7 +1,7 @@
 (function () {
   "use strict";
   var W = window.ForeverWeights, $ = function (id) { return document.getElementById(id); };
-  var an = null, result = null, view = "throughput", opts = {};
+  var an = null, result = null, view = "manaLimited", opts = {};
   var INPUTS = ["bonus", "intBonus", "sg", "casting", "spiBonus", "intHeal", "regen", "critPerInt", "lambda"];
   var STATS = [["healing", "Healing"], ["critRating", "Crit rating"], ["intellect", "Intellect"], ["spirit", "Spirit"], ["mp5", "MP5"]];
 
@@ -219,8 +219,8 @@
     $("cards").innerHTML = cards.filter(function (c) { return c[1] && c[1].healing; }).map(function (c) {
       var x = c[1], w = x[view];
       return '<div class="card"><h3>' + c[0] + '</h3><div class="meta">' + fmtT(x.duration) + " · " + fmtK(x.eff) + " healing · " + pct(x.overPct) +
-        " overheal · " + x.hpm.toFixed(2) + " healing/mana · lowest mana " + pct(x.minMana) + '</div><div class="w"><span class="h">Stat</span><span class="h v">Weight</span><span class="h v">Points = 10 healing</span>' +
-        STATS.map(function (s) { var v = w[s[0]]; return "<span>" + s[1] + '</span><span class="v">' + v.toFixed(2) + '</span><span class="v muted">' + (v > 0.001 ? (10 / v).toFixed(1) : "–") + "</span>"; }).join("") +
+        " overheal · " + x.hpm.toFixed(2) + " healing/mana · lowest mana " + pct(x.minMana) + '</div><div class="w"><span class="h">Stat</span><span class="h v">Worth (+healing)</span>' +
+        STATS.map(function (s) { var v = w[s[0]]; return "<span>" + s[1] + '</span><span class="v">' + v.toFixed(2) + "</span>"; }).join("") +
         "</div></div>";
     }).join("");
 
