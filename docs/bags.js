@@ -12,8 +12,28 @@
   ];
   var MAIN = [13, 21], TWOH = [17], OFF = [14, 23];
 
-  // every {"id": n} in the export; items under a "gear" key are what is equipped
+  // SimulationCraft addon (/simc): equipped items are "slot=,id=N,..." lines; bags (and the bank, once opened with the
+  // addon loaded) are the same lines commented out with "#" under "### Gear from Bags" / "### Gear from Bank"
+  var SIMC_SLOT = /^\s*(#\s*)?(head|neck|shoulders?|back|chest|shirt|tabard|wrists?|hands|waist|legs|feet|finger[12]|trinket[12]|main_hand|off_hand|ranged)=[^\n]*?\bid=(\d+)/;
+  function parseSimc(text) {
+    var equipped = [], owned = [], bank = /###\s*Gear from Bank/i.test(text);
+    text.split(/\r?\n/).forEach(function (l) {
+      var m = l.match(SIMC_SLOT);
+      if (!m) return;
+      owned.push(+m[3]);
+      if (!m[1]) equipped.push(+m[3]);
+    });
+    var c = text.match(/^\s*(warrior|paladin|hunter|rogue|priest|shaman|mage|warlock|druid)="?([^"\n]*)"?/m);
+    var lv = text.match(/^\s*level=(\d+)/m);
+    if (!owned.length) throw new Error("No items found in that SimulationCraft text - copy the whole /simc window.");
+    return { equipped: equipped, owned: owned, cls: c ? c[1][0].toUpperCase() + c[1].slice(1) : null,
+             level: lv ? +lv[1] : null, name: c ? c[2] : null, bank: bank, format: "SimulationCraft" };
+  }
+
+  // JSON exports (MythicSim, voidsim.io): every {"id": n} in an "items" array; items under "gear" are equipped
   function parseExport(text) {
+    var T = String(text);
+    if (!/^\s*\{/.test(T) && T.split(/\r?\n/).some(function (l) { return SIMC_SLOT.test(l); })) return parseSimc(T);
     var data;
     try { data = JSON.parse(String(text).trim()); }
     catch (e) {
@@ -38,7 +58,8 @@
     if (!owned.length) throw new Error("No items found in that text - paste the whole export from the MythicSim or voidsim addon.");
     var cls = data.class || (data.character && data.character.class) || null;
     var level = data.level || (data.character && data.character.level) || null;
-    return { equipped: equipped, owned: owned, cls: cls, level: level, name: data.name || null };
+    return { equipped: equipped, owned: owned, cls: cls, level: level, name: data.name || null,
+             bank: !!(data.bank), format: /voidsim/i.test(data.version || "") ? "voidsim.io" : data.mythicsim ? "MythicSim" : "export" };
   }
 
   function usable(row, cls, level) {
