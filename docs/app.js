@@ -299,7 +299,8 @@
         return "<tr" + (x.change ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur) + "</td><td>" + (x.change ? "<b>" + cell(x.best) + "</b>" : cell(x.best)) +
           "</td><td>" + (x.change ? "+" + x.gain.toFixed(0) : "") + "</td></tr>";
       }).join("") + "</tbody>";
-    $("bagnote").innerHTML = (bagExp.name ? esc(bagExp.name) + " \u00b7 " : "") + cls + " level " + lvl + " \u00b7 " + B.owned + " items read" +
+    $("bagnote").innerHTML = (bagExp.name ? esc(bagExp.name) + " \u00b7 " : "") + cls + " level " + lvl + " \u00b7 " + esc(bagExp.format || "export") +
+      (bagExp.bank ? " (bank included)" : " (equipped + bags; no bank in this export)") + " \u00b7 " + B.owned + " items read" +
       (B.unknown ? " (" + B.unknown + " have no healer stats or aren't in the item data)" : "") +
       " \u00b7 values in +healing (" + (view === "manaLimited" ? "mana-limited" : "throughput") + ", " + $("bagscope").selectedOptions[0].text.toLowerCase() + ")" +
       " \u00b7 <b>total gain +" + B.total.toFixed(0) + " healing</b>";
