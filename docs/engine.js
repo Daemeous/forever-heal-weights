@@ -99,6 +99,10 @@
     return b;
   };
 
+  // Raw combat log line -> normalised event (the same shape the Warcraft Logs adapter produces, see wcl.js):
+  // {t, type: encStart|encEnd|info|summon|death|heal|cast|energize|other, src, srcName, dst, sid, spell,
+  //  periodic, amount (incl. overheal), over, crit, hp, maxHp (target after the heal), cost (as logged),
+  //  adv: {unit, mana, max} (a mana reading of a unit), ptype, kill, stats}
   Analyzer.prototype.line = function (line) {
     var sp = line.indexOf("  ");
     if (sp < 0) return;
@@ -108,47 +112,62 @@
     if (!WANT[ev] && !isSpell) return;
     var t = parseTime(line.slice(0, sp));
     if (isNaN(t)) return;
+    var f = splitFields(body.slice(c + 1).replace(/\s+$/, ""));
+    var E = { t: t, type: "other", src: f[0], srcName: f[1], dst: f[4], sid: f[8], spell: f[9] };
+    if (ev === "ENCOUNTER_START") { E.type = "encStart"; E.name = f[1]; }
+    else if (ev === "ENCOUNTER_END") { E.type = "encEnd"; E.kill = f[4] === "1"; }
+    else if (ev === "COMBATANT_INFO") { E.type = "info"; E.stats = { str: +f[2], agi: +f[3], sta: +f[4], int: +f[5], spi: +f[6] }; }
+    else if (ev === "SPELL_SUMMON") E.type = "summon";
+    else if (ev === "UNIT_DIED") E.type = "death";
+    else if (ev === "SPELL_HEAL" || ev === "SPELL_PERIODIC_HEAL") {
+      if (f.length <= 34) return;
+      E.type = "heal"; E.periodic = ev === "SPELL_PERIODIC_HEAL";
+      E.amount = +f[30]; E.over = +f[32]; E.crit = f[34] === "1"; E.hp = +f[13]; E.maxHp = +f[14];
+    } else if (ev === "SPELL_CAST_SUCCESS") { E.type = "cast"; E.cost = +f[24] || 0; }
+    else if (ev === "SPELL_ENERGIZE" || ev === "SPELL_PERIODIC_ENERGIZE") {
+      E.type = "energize"; E.amount = +f[30] || 0; E.over = +f[31] || 0; E.ptype = f[32];
+    }
+    if (f.length > 24 && f[21] === "0") E.adv = { unit: f[11], mana: +f[22], max: +f[23] };
+    this.event(E);
+  };
+
+  Analyzer.prototype.event = function (E) {
+    var t = E.t;
     this.lines++;
     if (this.t0 == null) this.t0 = t;
     this.tLast = t;
-    var f = splitFields(body.slice(c + 1).replace(/\s+$/, ""));
-
-    if (ev === "ENCOUNTER_START") { this.closeEncounter(t, null); this.enc = { idx: this.encounters.length, name: f[1], start: t }; this.encounters.push({ name: f[1], start: t, end: t, kill: null }); return; }
-    if (ev === "ENCOUNTER_END") { this.closeEncounter(t, f[4] === "1"); return; }
-    if (ev === "COMBATANT_INFO") { var pi = this.players[f[0]]; if (pi) pi.info = { str: +f[2], agi: +f[3], sta: +f[4], int: +f[5], spi: +f[6] }; else this.pendingInfo = this.pendingInfo || {}, this.pendingInfo[f[0]] = { str: +f[2], agi: +f[3], sta: +f[4], int: +f[5], spi: +f[6] }; return; }
-    if (ev === "SPELL_SUMMON") { if (f[0].indexOf("Player-") === 0) this.owner[f[4]] = f[0]; return; }
-    if (ev === "UNIT_DIED") {
-      var pd = this.players[f[4]];
+    if (E.type === "encStart") { this.closeEncounter(t, null); this.enc = { idx: this.encounters.length, name: E.name, start: t }; this.encounters.push({ name: E.name, start: t, end: t, kill: null }); return; }
+    if (E.type === "encEnd") { this.closeEncounter(t, E.kill); return; }
+    if (E.type === "info") { var pi = this.players[E.src]; if (pi) pi.info = E.stats; else (this.pendingInfo = this.pendingInfo || {})[E.src] = E.stats; return; }
+    if (E.type === "summon") { if (E.src.indexOf("Player-") === 0) this.owner[E.dst] = E.src; return; }
+    if (E.type === "death") {
+      var pd = this.players[E.dst];
       if (pd) { pd.dead = true; pd.last = null; var bd = this.buckets(pd, t); for (var i = 0; i < bd.length; i++) bd[i].deaths++; }
       return;
     }
-
-    // mana reading: the advanced-info unit (field 11) is a tracked player and the power type is mana
-    var adv = f.length > 24 && f[21] === "0" ? this.players[f[11]] : null;
-    var src = f[0];
-
-    if (ev === "SPELL_HEAL" || ev === "SPELL_PERIODIC_HEAL") {
+    var src = E.src, A = E.adv, adv = A ? this.players[A.unit] : null;
+    if (E.type === "heal") {
       var who = src.indexOf("Player-") === 0 ? src : this.owner[src];
-      if (who && f.length > 34) this.heal(who, src === who ? f[1] : null, t, f, ev === "SPELL_PERIODIC_HEAL");
-    } else if (ev === "SPELL_CAST_SUCCESS") {
-      if (src.indexOf("Player-") === 0 && f[11] === src && f[21] === "0") this.cast(this.player(src, f[1]), t, f);
-    } else if (ev === "SPELL_ENERGIZE" || ev === "SPELL_PERIODIC_ENERGIZE") {
-      var pe = this.players[f[4]];
-      if (pe && f[32] === "0") {
-        var amt = (+f[30] || 0) - (+f[31] || 0), be = this.buckets(pe, t);
-        for (var j = 0; j < be.length; j++) { var x = be[j].energ[f[9]] || (be[j].energ[f[9]] = [0, 0]); x[0] += amt; x[1]++; }
+      if (who) this.heal(who, src === who ? E.srcName : null, E);
+    } else if (E.type === "cast") {
+      if (src.indexOf("Player-") === 0 && A && A.unit === src) this.cast(this.player(src, E.srcName), E);
+    } else if (E.type === "energize") {
+      var pe = this.players[E.dst];
+      if (pe && E.ptype === "0") {
+        var amt = E.amount - E.over, be = this.buckets(pe, t);
+        for (var j = 0; j < be.length; j++) { var x = be[j].energ[E.spell] || (be[j].energ[E.spell] = [0, 0]); x[0] += amt; x[1]++; }
       }
     }
-    if (adv && !(ev === "SPELL_CAST_SUCCESS" && src === f[11])) this.reading(adv, t, +f[22], +f[23], false);
+    if (adv && !(E.type === "cast" && src === A.unit)) this.reading(adv, t, A.mana, A.max, false);
   };
 
-  Analyzer.prototype.heal = function (guid, name, t, f, periodic) {
-    var p = this.player(guid, name);
-    var s = this.S[f[8]];
+  Analyzer.prototype.heal = function (guid, name, E) {
+    var p = this.player(guid, name), t = E.t;
+    var s = this.S[E.sid];
     if (s) p.cls[s.c] = (p.cls[s.c] || 0) + 1;
-    var h = { sid: f[8], name: f[9], p: periodic ? 1 : 0, a: +f[30], o: +f[32], crit: f[34] === "1",
-              hp: +f[13], max: +f[14], b: this.buckets(p, t), t: t, idx: 0 };
-    var chain = s && !periodic && s.d && s.d.length > 2;
+    var h = { sid: E.sid, name: E.spell, p: E.periodic ? 1 : 0, a: E.amount, o: E.over, crit: E.crit,
+              hp: E.hp, max: E.maxHp, b: this.buckets(p, t), t: t, idx: 0 };
+    var chain = s && !E.periodic && s.d && s.d.length > 2;
     if (chain) {                                   // Chain Heal: group hits, the log lists the smallest jump first
       var g = p.chain[h.sid];
       if (g && t - g[0].t < 0.5 && g.length < 3) { g.push(h); return; }
@@ -180,10 +199,10 @@
     }
   };
 
-  Analyzer.prototype.cast = function (p, t, f) {
-    var cost = +f[24] || 0, m = +f[22], x = +f[23];
+  Analyzer.prototype.cast = function (p, E) {
+    var t = E.t, cost = E.cost || 0, m = E.adv.mana, x = E.adv.max;
     p.dead = false;
-    var b = this.buckets(p, t), key = f[9] + "|" + cost;
+    var b = this.buckets(p, t), key = E.spell + "|" + cost;
     for (var i = 0; i < b.length; i++) b[i].casts[key] = (b[i].casts[key] || 0) + 1;
     this.reading(p, t, m, x, true);
     if (cost > 0) { p.lastSpend = t; p.pend = { t: t, key: key, m: m }; }

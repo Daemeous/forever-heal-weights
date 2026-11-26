@@ -41,21 +41,96 @@
     }
     function finish() {
       an.finish();
-      var hs = W.healers(an);
       var secs = ((performance.now() - t0) / 1000).toFixed(1);
-      if (!hs.length) { status("Read " + an.lines.toLocaleString() + " events in " + secs + " s, but found no Priest / Paladin / Shaman / Druid healing. Is Advanced Combat Logging on?", true); return; }
-      status("Read " + an.lines.toLocaleString() + " events and " + an.encounters.length + " encounters in " + secs + " s.");
-      var sel = $("who"); sel.innerHTML = "";
-      hs.forEach(function (h) {
-        var o = document.createElement("option");
-        o.value = h.guid; o.textContent = h.name.split("-")[0] + " (" + h.cls + ", " + fmtK(h.eff) + " healing)";
-        sel.appendChild(o);
-      });
-      $("setup").classList.remove("hidden");
-      pickHealer();
+      if (showHealers(W.healers(an)))
+        status("Read " + an.lines.toLocaleString() + " events and " + an.encounters.length + " encounters in " + secs + " s.");
+      else status("Read " + an.lines.toLocaleString() + " events in " + secs + " s, but found no Priest / Paladin / Shaman / Druid healing. Is Advanced Combat Logging on?", true);
     }
     step();
   }
+
+  function showHealers(hs) {
+    if (!hs.length) return false;
+    var sel = $("who"); sel.innerHTML = "";
+    hs.forEach(function (h) {
+      var o = document.createElement("option");
+      o.value = h.guid; o.textContent = h.name.split("-")[0] + " (" + h.cls + ", " + fmtK(h.eff) + " healing)";
+      sel.appendChild(o);
+    });
+    $("setup").classList.remove("hidden");
+    pickHealer();
+    return true;
+  }
+
+  // ------------------------------------------------------------------ source tabs
+  document.querySelectorAll(".btn[data-src]").forEach(function (b) {
+    b.addEventListener("click", function () { setSource(b.getAttribute("data-src")); });
+  });
+  function setSource(src) {
+    document.querySelectorAll(".btn[data-src]").forEach(function (x) { x.classList.toggle("on", x.getAttribute("data-src") === src); });
+    $("src-file").classList.toggle("hidden", src !== "file");
+    $("src-wcl").classList.toggle("hidden", src !== "wcl");
+    try { localStorage.setItem("fhw:src", src); } catch (e) {}
+    if (src === "wcl") wclAuthNote();
+  }
+
+  // ------------------------------------------------------------------ Warcraft Logs
+  var WCL = window.ForeverWCL, rep = null;
+  function wclAuthNote() {
+    var el = $("wclauth");
+    if (!WCL.configured()) { el.innerHTML = '<b class="err">Not set up on this copy of the page yet</b> (no Warcraft Logs client ID in wcl-config.js).'; return; }
+    if (WCL.signedIn()) { el.innerHTML = 'Signed in to Warcraft Logs. <a href="#" id="wclout">Sign out</a>'; $("wclout").onclick = function (e) { e.preventDefault(); WCL.signOut(); wclAuthNote(); }; }
+    else el.textContent = "You will be asked to sign in when you load a report.";
+  }
+  function wclFail(e) {
+    $("progress").style.display = "none";
+    if (e && e.auth) { status("Signing in to Warcraft Logs…"); WCL.signIn($("wclurl").value).catch(wclFail); return; }
+    status(e && e.message ? e.message : String(e), true);
+  }
+  $("wclgo").addEventListener("click", function () {
+    var code = WCL.reportCode($("wclurl").value);
+    if (!code) { status("That doesn't look like a Warcraft Logs report link (…/reports/<16 characters>).", true); return; }
+    if (!WCL.configured()) { wclAuthNote(); status("The Warcraft Logs option isn't set up on this copy of the page.", true); return; }
+    if (!WCL.signedIn()) { status("Signing in to Warcraft Logs…"); WCL.signIn($("wclurl").value).catch(wclFail); return; }
+    status("Loading report " + code + "…");
+    $("wclpick").classList.add("hidden"); $("setup").classList.add("hidden"); $("results").classList.add("hidden");
+    WCL.loadReport(code).then(function (r) {
+      rep = r;
+      if (!r.healers.length) { status("No Priest / Paladin / Shaman / Druid healing found in “" + r.title + "”.", true); return; }
+      var sel = $("wclwho"); sel.innerHTML = "";
+      r.healers.forEach(function (h) {
+        var o = document.createElement("option"); o.value = h.id;
+        o.textContent = h.name + " (" + h.cls + ", " + fmtK(h.healing) + " healing)"; sel.appendChild(o);
+      });
+      $("wclpick").classList.remove("hidden");
+      var nb = r.fights.filter(function (f) { return f.encounterID; }).length;
+      status("“" + r.title + "”" + (r.zone ? " (" + r.zone.name + ")" : "") + ": " + nb + " boss pulls. Pick a healer and press Analyse.");
+      wclAuthNote();
+    }).catch(wclFail);
+  });
+  $("wclrun").addEventListener("click", function () {
+    if (!rep) return;
+    var id = +$("wclwho").value, h = rep.healers.filter(function (x) { return x.id === id; })[0];
+    $("progress").style.display = "block"; $("progress").firstElementChild.style.width = "0%";
+    status("Downloading " + h.name + "'s events…");
+    var t0 = performance.now();
+    WCL.loadEvents(rep, id, function (n, next, end) {
+      $("progress").firstElementChild.style.width = (next ? 100 * next / end : 100).toFixed(1) + "%";
+      status("Downloaded " + n.toLocaleString() + " events…");
+    }).then(function (events) {
+      an = WCL.feed(new W.Analyzer(FOREVER_SPELLS), rep, events).finish();
+      var only = W.healers(an).filter(function (x) { return x.guid === "Player-" + id; });
+      var secs = ((performance.now() - t0) / 1000).toFixed(1);
+      if (showHealers(only)) status("Read " + events.length.toLocaleString() + " events and " + an.encounters.length + " boss pulls in " + secs + " s.");
+      else status("Downloaded " + events.length.toLocaleString() + " events, but none of " + h.name + "'s heals could be read. Was Advanced Combat Logging on?", true);
+    }).catch(wclFail);
+  });
+
+  // finish a sign-in redirect, then continue loading the report that started it
+  try { if (localStorage.getItem("fhw:src") === "wcl") setSource("wcl"); } catch (e) {}
+  WCL.completeSignIn().then(function (resume) {
+    if (resume) { setSource("wcl"); $("wclurl").value = resume; $("wclgo").click(); }
+  }).catch(function (e) { setSource("wcl"); wclFail(e); });
 
   function status(msg, err) { var s = $("status"); s.textContent = msg; s.className = err ? "err" : "muted"; }
 
@@ -82,10 +157,10 @@
     render();
   }
 
-  document.querySelectorAll(".seg .btn").forEach(function (b) {
+  document.querySelectorAll(".btn[data-view]").forEach(function (b) {
     b.addEventListener("click", function () {
       view = b.getAttribute("data-view");
-      document.querySelectorAll(".seg .btn").forEach(function (x) { x.classList.toggle("on", x === b); });
+      document.querySelectorAll(".btn[data-view]").forEach(function (x) { x.classList.toggle("on", x === b); });
       render();
     });
   });

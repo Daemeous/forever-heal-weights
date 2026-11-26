@@ -82,12 +82,32 @@ a { color: var(--accent); }
     The log is read <strong>in your browser</strong>: nothing is uploaded, and the page works offline once loaded.</p>
 
   <section class="panel">
-    <h2>1. Choose your combat log</h2>
-    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose combat log files">
-      <strong>Drop <code>WoWCombatLog-….txt</code> here, or click to choose</strong>
-      <span class="muted">Usually in <code>World of Warcraft\_forever_\Logs\</code>. Advanced Combat Logging must be on (System › Network). Several files are fine.</span>
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <h2 style="margin:0">1. Choose your combat log</h2>
+      <div class="seg" role="tablist" aria-label="Log source">
+        <button class="btn on" data-src="file" role="tab">Log file</button>
+        <button class="btn" data-src="wcl" role="tab">Warcraft Logs link</button>
+      </div>
     </div>
-    <input id="file" type="file" accept=".txt,.log" multiple class="hidden">
+    <div id="src-file">
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose combat log files">
+        <strong>Drop <code>WoWCombatLog-….txt</code> here, or click to choose</strong>
+        <span class="muted">Usually in <code>World of Warcraft\_forever_\Logs\</code>. Advanced Combat Logging must be on (System › Network). Several files are fine.</span>
+      </div>
+      <input id="file" type="file" accept=".txt,.log" multiple class="hidden">
+    </div>
+    <div id="src-wcl" class="hidden">
+      <div class="row">
+        <label class="f sel" style="flex:1">Report link<input id="wclurl" type="url" placeholder="https://forever.warcraftlogs.com/reports/…" style="width:100%"></label>
+        <button class="btn on" id="wclgo">Load report</button>
+      </div>
+      <div id="wclpick" class="row hidden" style="margin-top:12px">
+        <label class="f sel">Healer in this report<select id="wclwho"></select></label>
+        <button class="btn on" id="wclrun">Analyse</button>
+      </div>
+      <p class="note" id="wclnote">Reads the report through the Warcraft Logs API. You sign in to Warcraft Logs once (this page never sees your password),
+        and the report must have been logged with Advanced Combat Logging on. <span id="wclauth"></span></p>
+    </div>
     <div id="progress" class="progress"><div></div></div>
     <p id="status" class="muted" style="margin:10px 0 0"></p>
   </section>
@@ -159,6 +179,8 @@ a { color: var(--accent); }
 </main>
 <script src="spells.js"></script>
 <script src="engine.js"></script>
+<script src="wcl-config.js"></script>
+<script src="wcl.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

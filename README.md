@@ -17,6 +17,21 @@ The log is read by your own browser. Nothing is uploaded anywhere.
   - **Mana-limited**: each point of mana is worth your healing per mana in boss fights.
 - A CSV export.
 
+**Warcraft Logs link** (the second tab): paste a `forever.warcraftlogs.com` report link and sign in to Warcraft
+Logs once. The page then reads the report through the Warcraft Logs API, still in your browser.
+
+## Setting up the Warcraft Logs option (once, for whoever hosts the page)
+
+1. Go to https://www.warcraftlogs.com/api/clients/ and create a client:
+   - Name: anything.
+   - Redirect URL: the page's exact address, e.g. `https://daemeous.github.io/forever-heal-weights/`.
+   - Tick **Public Client**. This uses PKCE, so there is no secret to keep.
+2. Put the client ID in `docs/wcl-config.js` and push.
+
+The API returns events already parsed, not raw log lines. `docs/wcl.js` converts them into the same events the
+raw-log reader produces. `node tools/wcl_roundtrip.js <log> <Player-GUID>` checks that conversion against a raw log.
+The API's real field layout (resource actor, hit points, cast cost) has not yet been checked against a live report.
+
 ## Before you start
 
 - Turn on **Advanced Combat Logging** (System > Network) and type `/combatlog` before the run.
