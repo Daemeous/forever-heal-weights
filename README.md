@@ -15,6 +15,10 @@ The log is read by your own browser. Nothing is uploaded anywhere.
 - Two views:
   - **Throughput**: mana is free. This tells you what makes your heals bigger.
   - **Mana-limited**: each point of mana is worth your healing per mana in boss fights.
+- **Boss fights of a set length (2, 3 and 6 min, estimates)**: your boss-fight weights carried over to a longer mana-limited
+  fight. Mana for the fight = max mana + regen over the fight + potions (editable), so 1 mana is worth
+  (healing / healing per +1 bonus healing) / (mana for the fight). Intellect counts its full 15 mana, Spirit and MP5 their regen
+  over the fight. "Funded" compares that mana with your logged boss-fight pace: at 100% or more, use the Throughput weights.
 - A per-spell table (casts, real mana, healing, overheal, crit rate, healing per mana) for any fight or all of them.
 - A CSV export and a one-line "Copy summary" for Discord.
 - **Best in bags**: paste the text from the SimulationCraft addon (`/simc`, current version; it includes the
@@ -79,7 +83,7 @@ Checked against a live Forever report (26 Nov 2026): field layout, talents (`tal
   learn level, then loses 5% per level. Logs show a floor of about 10%.
 
 Assumptions you may want to check:
-- Regen formulas are Classic. The Priest one (13 + Spirit/4 per tick) is confirmed in Forever.
+- Spirit regen is one formula for every class in Forever: min(Spirit/4, 6.25 + Spirit/8) mana per second (0.125 per Spirit above 50), checked in game on Priest, Druid, Paladin and Shaman.
 - Swiftmend gets bonus-healing credit as a full Rejuvenation. Earth Shield gets none.
 - Shield absorbs (Power Word: Shield, Divine Aegis) count as healing done, with no bonus-healing credit.
 - Only class healing spells count; potions and trinket heals are left out.

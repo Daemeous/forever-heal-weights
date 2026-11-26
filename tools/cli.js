@@ -30,10 +30,15 @@ ${h.name}: talents ${det.talents.map(t => t.name + " " + t.rank + "/" + t.max).j
     for (const k of ["bonus", "regen", "casting", "sg", "intBonus", "critPerInt"]) if (opt[k] != null) o[k] = +opt[k];
     const r = W.analyse(an, h.guid, o); all[h.name] = r;
     const f = (x) => x.toFixed(2);
-    const show = (r) => console.log(`${r.label.padEnd(30)} ${(r.kill === false ? "wipe" : "").padEnd(5)}${Math.round(r.duration).toString().padStart(5)}s eff ${Math.round(r.eff).toString().padStart(7)} over ${(100 * r.overPct).toFixed(0).padStart(3)}% HPM ${r.hpm.toFixed(2).padStart(5)} minMana ${(100 * r.minMana).toFixed(0).padStart(3)}% | thr crit ${f(r.throughput.critRating)} int ${f(r.throughput.intellect)} spi ${f(r.throughput.spirit)} | mana crit ${f(r.manaLimited.critRating)} int ${f(r.manaLimited.intellect)} spi ${f(r.manaLimited.spirit)} mp5 ${f(r.manaLimited.mp5)}`);
+    const show = (r) => r.throughput && console.log(`${r.label.padEnd(30)} ${(r.kill === false ? "wipe" : "").padEnd(5)}${Math.round(r.duration).toString().padStart(5)}s eff ${Math.round(r.eff).toString().padStart(7)} over ${(100 * r.overPct).toFixed(0).padStart(3)}% HPM ${r.hpm.toFixed(2).padStart(5)} minMana ${(100 * r.minMana).toFixed(0).padStart(3)}% | thr crit ${f(r.throughput.critRating)} int ${f(r.throughput.intellect)} spi ${f(r.throughput.spirit)} | mana crit ${f(r.manaLimited.critRating)} int ${f(r.manaLimited.intellect)} spi ${f(r.manaLimited.spirit)} mp5 ${f(r.manaLimited.mp5)}`);
     console.log(`\n== ${h.name} (${h.cls}) bonus healing ${o.bonus}; heal per +1 healing (whole log) ${r.whole.healPerPoint.toFixed(0)}`);
     show(r.whole); if (r.bosses) show(r.bosses); show(r.trash);
     for (const e of r.encounters) show(e);
+    const fi = W.fightInputs(an, h.guid);
+    console.log(`
+Boss fight estimates (max mana ${fi.maxMana}, Spirit ${fi.spirit}, gear MP5 0):`);
+    for (const fr of W.fights(r, o, [[120, 1800], [180, 1800], [360, 3600]].map(([L, other]) => Object.assign({ seconds: L, other }, fi))))
+      console.log(`${fr.label.padEnd(30)} mana ${Math.round(fr.mana)} need ${Math.round(fr.need)} funded ${(100 * fr.funded).toFixed(0)}% | crit ${f(fr.manaLimited.critRating)} (${f(fr.manaLimited.critPct)}/1%) int ${f(fr.manaLimited.intellect)} spi ${f(fr.manaLimited.spirit)} mp5 ${f(fr.manaLimited.mp5)}`);
   }
   if (opt.json) fs.writeFileSync(opt.json, JSON.stringify(all, null, 1));
 })();

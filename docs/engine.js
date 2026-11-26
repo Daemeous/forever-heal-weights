@@ -4,15 +4,18 @@
   "use strict";
 
   // ------------------------------------------------------------------ class defaults (all editable in the UI)
-  // regen: mana per second per point of Spirit outside the five-second rule (Classic formulas, confirmed in Forever
-  //   for Priests: 13 + Spirit/4 per 2 sec tick). casting: share of Spirit regen kept while casting (Meditation /
-  //   Mindfulness / Reflection talents). sg: Spirit -> bonus healing (Priest Spiritual Guidance, 5% per point).
+  // regen: mana per second per point of Spirit outside the five-second rule. Forever uses one formula for every
+  //   class (not Classic's per-class ones): min(Spirit/4, 6.25 + Spirit/8) mana/sec, i.e. 0.125 per Spirit above 50.
+  //   Fits every in-game reading: Priest 152/168/171 Spi = 126/136/138 MP5, Druid (lvl 27) 89/95 Spi = 86/90 MP5;
+  //   the same formula was measured on a Paladin and a Shaman by the HealerStatWeights addon.
+  //   casting: share of Spirit regen kept while casting (Meditation / Mindfulness / Reflection talents).
+  //   sg: Spirit -> bonus healing (Priest Spiritual Guidance, 5% per point).
   //   intBonus: talent % on Intellect. critPerInt: % spell crit per Intellect point at level 60.
   var CLASS_DEFAULTS = {
     Priest:  { regen: 0.125, casting: 0.5, sg: 0, intBonus: 0, critPerInt: 0.0168 },
-    Shaman:  { regen: 0.10,  casting: 0.5, sg: 0, intBonus: 0, critPerInt: 0.0169 },
-    Druid:   { regen: 0.10,  casting: 0.5, sg: 0, intBonus: 0, critPerInt: 0.0167 },
-    Paladin: { regen: 0.10,  casting: 0,   sg: 0, intBonus: 0, critPerInt: 0.0167 },
+    Shaman:  { regen: 0.125, casting: 0.5, sg: 0, intBonus: 0, critPerInt: 0.0169 },
+    Druid:   { regen: 0.125, casting: 0.5, sg: 0, intBonus: 0, critPerInt: 0.0167 },
+    Paladin: { regen: 0.125, casting: 0,   sg: 0, intBonus: 0, critPerInt: 0.0167 },
   };
   var MANA_PER_INT = 15, RATING_PER_CRIT = 14;
   var REFUNDS = { "Litany of Light": 1 };                       // mana refunds tied to heal casts
@@ -113,7 +116,7 @@
         sets: {}, cur: null, all: null, trash: null, enc: null,
         chain: {},           // sid -> open chain group
         last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], hlB: [], critMult: 1.5,
-        offEnc: {}, healSigs: null,
+        offEnc: {}, healSigs: null, maxSeen: {},
       };
       this.useSet(p, null);
     }
@@ -286,6 +289,7 @@
       p.pend = null;
     }
     var b = this.buckets(p, t);
+    p.maxSeen[x] = (p.maxSeen[x] || 0) + 1;
     for (var i = 0; i < b.length; i++) if (m / x < b[i].minMana) b[i].minMana = m / x;
     var L = p.last;
     p.last = { t: t, m: m, x: x };
@@ -465,11 +469,55 @@
       spent: spent, spentHeal: spentHeal, refund: refund, hpm: hpm, critRate: critRate, minMana: bucket.minMana,
       tIn: bucket.tIn, tOut: bucket.tOut, drains: bucket.drains, deaths: bucket.deaths,
       healPerPoint: healD, absorbed: absorbed, critMult: m,
+      raw: { critD: bucket.critD, critMana: critMana, critProcs: critProcs, spiritHeal: spiritHeal,
+             wsProcs: bucket.energ["Water Shield"] ? bucket.energ["Water Shield"][1] : 0 },
       spells: Object.keys(spells).map(function (k) { return spells[k]; }).filter(function (x) { return x.eff + x.over > 0 || x.casts; })
         .sort(function (a, b) { return b.eff - a.eff; }),
       throughput: weights(0), manaLimited: weights(lamRef != null ? lamRef : hpm), lambda: lamRef != null ? lamRef : hpm,
       healing: healD > 0,
     };
+  }
+
+  // ------------------------------------------------------------------ boss fight of a set length (estimate)
+  // The 'BiS lists' sheet's fight model. A mana-limited fight of L seconds funds
+  //   M = max mana + L x regen + potions / other mana,  regen = Spirit regen x (outside 5SR + casting share x inside)
+  //   + gear MP5 / 5, and total healing ~ M x healing per mana, so +1 mana is worth k / M (+1 healing), with
+  //   k = healing / (healing per +1 bonus healing) x mana spent / mana spent on heals, all from the logged boss fights.
+  // Crit keeps its logged value plus its mana (Water Shield / Illumination, scaled with the fight's mana); Intellect =
+  // 15 mana + its crit (+ bigger Water Shield globes); Spirit / MP5 = their regen over L. Throughput = the logged one.
+  function spiritRegen(spi) { return Math.min(spi / 4, 6.25 + spi / 8); }   // mana/sec, every class (see CLASS_DEFAULTS)
+
+  function fightModel(base, opt, L, fm) {
+    var R = base.raw, hd = base.healPerPoint, tt = base.tIn + base.tOut;
+    if (!(hd > 0) || !(base.spentHeal > 0) || !(base.spent > 0)) return null;
+    var out = tt > 0 ? base.tOut / tt : 1, c = opt.casting / 100, share = out + c * (1 - out);
+    var regen = spiritRegen(fm.spirit) * share + (fm.mp5 || 0) / 5;
+    var M = fm.maxMana + L * regen + (fm.other || 0);
+    var k = base.eff / hd * base.spent / base.spentHeal, lam = M > 0 ? k / M : 0;
+    var critPct = R.critD / (100 * hd);
+    if (base.critRate > 0 && R.critProcs) critPct += R.critMana / (base.critRate * 100) / base.spent * k;
+    var ib = 1 + opt.intBonus / 100;
+    var pace = tt > 0 ? base.spent / tt : 0, need = pace * L;
+    var w = {
+      healing: 1,
+      critRating: critPct / RATING_PER_CRIT,
+      intellect: ib * (MANA_PER_INT * lam + opt.critPerInt * critPct + (opt.intHeal || 0) / 100 +
+                       (R.wsProcs ? MANA_PER_INT * 0.02 * R.wsProcs / base.spent * k : 0)),
+      spirit: (1 + (opt.spiBonus || 0) / 100) * (opt.sg / 100 + R.spiritHeal / hd + opt.regen * L * share * lam),
+      mp5: L / 5 * lam,
+      critPct: critPct,
+    };
+    return { label: "Boss fight, " + (L % 60 ? L + " sec" : L / 60 + " min") + " (estimate)", kind: "model", seconds: L,
+             duration: L, healing: true, mana: M, regen: regen, need: need, funded: need > 0 ? M / need : 1, lambda: lam,
+             manaLimited: w, throughput: base.throughput, healPerPoint: hd * L / Math.max(1, base.duration), eff: base.eff, hpm: base.hpm,
+             overPct: base.overPct, minMana: base.minMana };
+  }
+
+  // the fight model's log-side inputs for a player: most common max mana reading, Spirit from COMBATANT_INFO
+  function fightInputs(an, guid) {
+    var p = an.players[guid], best = 0, bn = 0;
+    for (var x in p.maxSeen) if (p.maxSeen[x] > bn) { bn = p.maxSeen[x]; best = +x; }
+    return { maxMana: best, spirit: p.info ? p.info.spi : 0 };
   }
 
   function hasHealName(p, nm) {
@@ -523,6 +571,12 @@
         })).sort(function (a, b) { return a.start - b.start; }),
       realCost: p.realCost,
     };
+  }
+
+  // estimates for boss fights of set lengths, from the boss-fight figures (whole log when there are none)
+  function fights(res, opt, list) {
+    var base = res.bosses && res.bosses.spentHeal > 2000 ? res.bosses : res.whole;
+    return list.map(function (f) { return fightModel(base, opt, f.seconds, f); }).filter(Boolean);
   }
 
   function mergeInto(into, b) {
@@ -607,7 +661,7 @@
     return out;
   }
 
-  var api = { detect: detect, Analyzer: Analyzer, analyse: analyse, healers: healers, defaults: defaults, downrank: downrank,
+  var api = { detect: detect, fights: fights, fightInputs: fightInputs, spiritRegen: spiritRegen, Analyzer: Analyzer, analyse: analyse, healers: healers, defaults: defaults, downrank: downrank,
               CLASS_DEFAULTS: CLASS_DEFAULTS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ForeverWeights = api;

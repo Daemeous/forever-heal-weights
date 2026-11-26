@@ -155,8 +155,13 @@
   // inputs start from what the log itself shows (talents, and bonus healing solved from the heals); edits last for
   // this page visit only, so an old edit never silently overrides a new log
   var detected = null;
+  var FM = ["fmMana", "fmSpi", "fmMp5", "fmO120", "fmO180", "fmO360"];
+  FM.forEach(function (k) { $(k).addEventListener("input", recompute); });
+
   function pickHealer() {
     var guid = $("who").value, p = an.players[guid], d = W.defaults(p.mainClass);
+    var fi = W.fightInputs(an, guid);
+    $("fmMana").value = fi.maxMana || ""; $("fmSpi").value = fi.spirit || "";
     detected = W.detect(an, guid, window.FOREVER_TALENTS);
     if (detected.talents.length) for (var k in detected.inputs) d[k] = detected.inputs[k];
     if (detected.bonus) d.bonus = detected.bonus.value;
@@ -191,6 +196,11 @@
     INPUTS.forEach(function (k) { o[k] = parseFloat($(k).value) || 0; });
     opts = o;
     result = W.analyse(an, guid, o);
+    var fv = function (k) { return parseFloat($(k).value) || 0; }, fm = { maxMana: fv("fmMana"), spirit: fv("fmSpi"), mp5: fv("fmMp5") };
+    result.fights = W.fights(result, o, [120, 180, 360].map(function (L) {
+      return { seconds: L, maxMana: fm.maxMana, spirit: fm.spirit, mp5: fm.mp5, other: fv("fmO" + L) };
+    }));
+    result.fights.forEach(function (f) { result["f" + f.seconds] = f; });
     render();
   }
 
@@ -224,6 +234,16 @@
         STATS.map(function (s) { var v = w[s[0]]; return "<span>" + s[1] + '</span><span class="v">' + v.toFixed(2) + "</span>"; }).join("") +
         "</div></div>";
     }).join("");
+    var base = r.bosses && r.bosses.spentHeal > 2000 ? "your boss fights" : "the whole log (no boss fights)";
+    $("fcards").innerHTML = r.fights.length ? r.fights.map(function (f) {
+      var spare = f.funded >= 1, w = f.manaLimited;
+      return '<div class="card"><h3>' + esc(f.label.replace(" (estimate)", "")) + (spare ? ' <span class="tag">mana to spare</span>' : ' <span class="tag low">mana-limited</span>') +
+        '</h3><div class="meta">' + Math.round(f.mana).toLocaleString() + " mana (" + f.regen.toFixed(1) + "/sec regen) · needs " + Math.round(f.need).toLocaleString() +
+        " at your pace · funded " + pct(f.funded) + " · 1 mana = " + f.lambda.toFixed(3) + " healing" + '</div><div class="w"><span class="h">Stat</span><span class="h v">Worth (+healing)</span>' +
+        STATS.map(function (s) { return "<span>" + s[1] + '</span><span class="v">' + w[s[0]].toFixed(2) + "</span>"; }).join("") +
+        "</div></div>";
+    }).join("") + '<p class="note" style="grid-column:1/-1;margin:0">From ' + base + "." + "</p>"
+      : '<p class="note">Not enough healing with mana readings in this log to build the estimate.</p>';
 
     var max = {};
     STATS.forEach(function (s) { max[s[0]] = 0; });

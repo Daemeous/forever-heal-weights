@@ -158,6 +158,25 @@ a { color: var(--accent); }
     </div>
 
     <div class="panel">
+      <h2 style="margin:0 0 8px">Boss fights of a set length (estimate)</h2>
+      <p class="note" style="margin-top:0">What your boss-fight weights become in a longer, mana-limited fight. The mana you can spend =
+        max mana + the fight's regen + potions / runes, and your healing is that mana times your logged healing per mana, so a point of mana is
+        worth less the more mana the fight gives you. Crit keeps its logged value. Intellect counts its full 15 mana, because in a mana-limited fight
+        the whole bar is used. Spirit and MP5 count their regen over the whole fight. "Funded" compares that mana with what you would spend at your logged
+        boss-fight pace: <b>at 100% or more you have mana to spare, so use the Throughput weights instead</b>. Max mana and Spirit come from the log; check them
+        against your raid-buffed character sheet.</p>
+      <div class="row" style="margin-bottom:10px">
+        <label class="f">Max mana<input id="fmMana" type="number" step="1" min="0"></label>
+        <label class="f">Spirit<input id="fmSpi" type="number" step="1" min="0"></label>
+        <label class="f">Gear MP5<input id="fmMp5" type="number" step="1" min="0" value="0"></label>
+        <label class="f">Potions etc. 2 min<input id="fmO120" type="number" step="100" min="0" value="1800"></label>
+        <label class="f">Potions etc. 3 min<input id="fmO180" type="number" step="100" min="0" value="1800"></label>
+        <label class="f">Potions etc. 6 min<input id="fmO360" type="number" step="100" min="0" value="3600"></label>
+      </div>
+      <div class="cards" id="fcards"></div>
+    </div>
+
+    <div class="panel">
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
         <h2 style="margin:0">Per encounter</h2>
         <button class="btn" id="csv">Download CSV</button>
@@ -182,6 +201,7 @@ a { color: var(--accent); }
         <h2 style="margin:0">Best in bags</h2>
         <label class="f sel">Weights from<select id="bagscope">
           <option value="bosses">All boss fights</option><option value="whole">Whole log</option><option value="trash">Trash and between pulls</option>
+          <option value="f120">Boss fight, 2 min (estimate)</option><option value="f180">Boss fight, 3 min (estimate)</option><option value="f360">Boss fight, 6 min (estimate)</option>
         </select></label>
       </div>
       <p class="note" style="margin-top:0">Paste the text from the <b>SimulationCraft</b> addon (<code>/simc</code>; needs a current version of the addon, and
@@ -248,9 +268,9 @@ a { color: var(--accent); }
 <script src="items.js?v=202611261726"></script>
 <script src="bags.js?v=202611261726"></script>
 <script src="extras.js?v=202611261726"></script>
-<script src="engine.js?v=202611261726"></script>
+<script src="engine.js?v=202611262000"></script>
 <script src="wcl-config.js?v=202611261726"></script>
 <script src="wcl.js?v=202611261726"></script>
-<script src="app.js?v=202611261726"></script>
+<script src="app.js?v=202611262000"></script>
 </body>
 </html>
