@@ -18,6 +18,7 @@ RULES = [  # (regex on the lower-cased rank description, key, how to read the ma
     (r"increases your spell healing by up to " + N + "% of your total spirit", "sg"),
     (r"increases your (?:total )?spirit by " + N + "%", "spi"),
     (r"spell damage and healing by up to " + N + "% of your intellect", "intHeal"),
+    (r"increases your spell healing by " + N + "% of your intellect", "intHeal"),     # Druid Natural Instinct
 ]
 HEAL = [  # healing multipliers -> scope
     (r"increases the amount healed by your spells by " + N + "%", "all"),
