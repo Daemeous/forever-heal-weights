@@ -7,6 +7,7 @@
   var CLIENT_ID = CFG.clientId || "";
   var HEALER_CLASSES = { Priest: 1, Paladin: 1, Shaman: 1, Druid: 1 };
   var PAGE = 10000;
+  var API_URLS = (CFG.api || [SITE + "/api/v2/user", "https://www.warcraftlogs.com/api/v2/user"]);
 
   // ------------------------------------------------------------------ helpers
   function reportCode(url) {
@@ -60,8 +61,12 @@
       body: new URLSearchParams({ grant_type: "authorization_code", client_id: CLIENT_ID, code_verifier: saved.verifier,
                                   redirect_uri: redirectUri(), code: q.get("code") }).toString(),
     }).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error("Token exchange failed (" + r.status + "): " + t.slice(0, 200)); });
-      return r.json();
+      return r.text().then(function (t) {
+        var j = null; try { j = JSON.parse(t); } catch (e) {}
+        if (!r.ok || !j || !j.access_token) throw new Error("Warcraft Logs sign-in failed at the token step (HTTP " + r.status + "): " +
+          (j ? (j.error_description || j.error || JSON.stringify(j)) : t.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 160)));
+        return j;
+      });
     }).then(function (j) {
       sessionStorage.setItem("wcl:token", JSON.stringify({ access: j.access_token, expires: Date.now() + 1000 * (j.expires_in || 3600) }));
       return saved.resume;
@@ -74,17 +79,40 @@
   function gql(query, vars) {
     var tk = token();
     if (!tk) return Promise.reject(Object.assign(new Error("Not signed in to Warcraft Logs."), { auth: true }));
-    return fetch(SITE + "/api/v2/user", {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + tk },
-      body: JSON.stringify({ query: query, variables: vars || {} }),
-    }).then(function (r) {
-      if (r.status === 401) { signOut(); throw Object.assign(new Error("Warcraft Logs sign-in expired."), { auth: true }); }
-      if (r.status === 429) throw new Error("Warcraft Logs rate limit reached; wait a while and try again.");
-      return r.json();
-    }).then(function (j) {
-      if (j.errors && j.errors.length) throw new Error("Warcraft Logs: " + j.errors.map(function (e) { return e.message; }).join("; "));
-      return j.data;
-    });
+    // Warcraft Logs answers a bad address AND a rejected token with a 404 page, so try the site's own API first, then
+    // the main one, remember whichever works, and report what each said if none does
+    var saved = null;
+    try { saved = sessionStorage.getItem("wcl:api"); } catch (e) {}
+    var urls = API_URLS.slice();
+    if (saved && urls.indexOf(saved) > 0) { urls.splice(urls.indexOf(saved), 1); urls.unshift(saved); }
+    var tried = [];
+    function attempt(i) {
+      if (i >= urls.length) {
+        var all404 = tried.every(function (x) { return / 40[14]/.test(x); });
+        if (all404) signOut();
+        return Promise.reject(Object.assign(new Error("The Warcraft Logs API did not accept the request (" + tried.join("; ") + ")." +
+          (all404 ? " This usually means the sign-in token was refused; press Load report to sign in again." : "")), { tried: tried }));
+      }
+      var url = urls[i];
+      return fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: "Bearer " + tk },
+        body: JSON.stringify({ query: query, variables: vars || {} }),
+      }).then(function (r) {
+        if (r.status === 429) throw new Error("Warcraft Logs rate limit reached; wait a while and try again.");
+        return r.text().then(function (txt) {
+          var j = null;
+          try { j = JSON.parse(txt); } catch (e) {}
+          if (!r.ok || !j || !("data" in j || "errors" in j)) {
+            tried.push(url.replace(/^https:\/\//, "") + " HTTP " + r.status + (j ? "" : " (not JSON)"));
+            return attempt(i + 1);
+          }
+          try { sessionStorage.setItem("wcl:api", url); } catch (e) {}
+          if (j.errors && j.errors.length && !j.data) throw new Error("Warcraft Logs: " + j.errors.map(function (e) { return e.message; }).join("; "));
+          return j.data;
+        });
+      }, function (err) { tried.push(url.replace(/^https:\/\//, "") + " network error: " + err.message); return attempt(i + 1); });
+    }
+    return attempt(0);
   }
 
   var META_Q = "query($code:String!){reportData{report(code:$code){code title startTime endTime zone{name}" +
