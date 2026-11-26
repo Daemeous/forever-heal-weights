@@ -246,6 +246,7 @@
     $("enc").innerHTML = "<thead>" + head + "</thead><tbody>" + (rows.join("") || '<tr><td colspan="9" class="muted">No encounters in this log.</td></tr>') + "</tbody>";
 
     renderSpellScopes();
+    renderBags();
     var rc = r.realCost, keys = Object.keys(rc).sort();
     $("costs").innerHTML = keys.length ? "<table><tr><th>Spell</th><th>Logged cost</th><th>Real cost</th></tr>" + keys.map(function (k) {
       var i = k.lastIndexOf("|");
@@ -277,6 +278,31 @@
           "</td><td>" + pct(x.eff / tot) + "</td><td>" + (x.eff + x.over > 0 && !x.absorb ? pct(x.over / (x.eff + x.over)) : "–") +
           "</td><td>" + (x.hits ? pct(x.crits / x.hits) : "–") + "</td><td>" + hpm + "</td></tr>";
       }).join("") + "</tbody>";
+  }
+
+  // ------------------------------------------------------------------ best in bags
+  var bagExp = null;
+  $("baggo").addEventListener("click", function () {
+    try { bagExp = window.ForeverBags.parseExport($("bagtext").value); }
+    catch (e) { bagExp = null; $("bagnote").innerHTML = '<span class="err">' + esc(e.message) + "</span>"; $("bags").innerHTML = ""; return; }
+    renderBags();
+  });
+  $("bagscope").addEventListener("change", renderBags);
+  function renderBags() {
+    if (!bagExp || !result) return;
+    var r = result, src = r[$("bagscope").value] || r.whole, w = src[view];
+    var cls = bagExp.cls || r.player.cls, lvl = bagExp.level || 60;
+    var B = window.ForeverBags.bestInBags(bagExp, cls, lvl, w, window.FOREVER_ITEMS);
+    function cell(x) { return x ? esc(x.name) + ' <span class="muted">' + x.v.toFixed(0) + "</span>" : '<span class="muted">empty, or an item without healer stats</span>'; }
+    $("bags").innerHTML = "<thead><tr><th>Slot</th><th>Wearing</th><th>Best you own</th><th>Gain</th></tr></thead><tbody>" +
+      B.rows.map(function (x) {
+        return "<tr" + (x.change ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur) + "</td><td>" + (x.change ? "<b>" + cell(x.best) + "</b>" : cell(x.best)) +
+          "</td><td>" + (x.change ? "+" + x.gain.toFixed(0) : "") + "</td></tr>";
+      }).join("") + "</tbody>";
+    $("bagnote").innerHTML = (bagExp.name ? esc(bagExp.name) + " \u00b7 " : "") + cls + " level " + lvl + " \u00b7 " + B.owned + " items read" +
+      (B.unknown ? " (" + B.unknown + " have no healer stats or aren't in the item data)" : "") +
+      " \u00b7 values in +healing (" + (view === "manaLimited" ? "mana-limited" : "throughput") + ", " + $("bagscope").selectedOptions[0].text.toLowerCase() + ")" +
+      " \u00b7 <b>total gain +" + B.total.toFixed(0) + " healing</b>";
   }
 
   // ------------------------------------------------------------------ copy a one-line summary (Discord etc.)
