@@ -277,7 +277,7 @@ a { color: var(--accent); }
       <p><b>+1 bonus healing</b>: for every heal that did not overheal, how much one more point would have added (the spell's coefficient from the Forever client data,
         times your talent multiplier measured from your own heals, times the downrank penalty). Crits count 1.5×. Heals that overhealed gain nothing.</p>
       <p><b>+1% crit</b>: a non-crit that didn't overheal would have gained up to half its size, capped at the target's missing health; a crit that partly overhealed gains only the part of the crit bonus that landed.
-        Water Shield / Illumination mana from crits counts in the mana-limited view. Forever has no crit rating: crit on gear is a flat percentage (0.5%, 1%, ...), so the weight is per +1% crit.</p>
+        Illumination mana from crits counts in the mana-limited view. So does Water Shield, but only for the heals where an extra crit would really have made a globe: shield up (3 charges per cast, being hit uses them too), 3.5 sec since the last globe, and no globe from the same cast already. The 1.5 sec recast is not charged: in the mana-limited view time is not what runs out. Forever has no crit rating: crit on gear is a flat percentage (0.5%, 1%, ...), so the weight is per +1% crit.</p>
       <p><b>Intellect</b>: its crit, plus (mana-limited) 15 mana per point every time you drained your mana from full to under 10%.</p>
       <p><b>Spirit / MP5</b>: only count while you were below full mana (regen is wasted at full), split into inside / outside the five-second rule. Druid Bloom heals for your Spirit, so Druid Spirit has throughput value.</p>
       <p><b>Throughput</b> treats mana as free (you never ran out). <b>Mana-limited</b> values each point of mana at your healing per mana across all boss fights. Use mana-limited when you ran dry; rows where your mana never went below 40% are dimmed in that view.</p>
@@ -291,15 +291,15 @@ a { color: var(--accent); }
   </footer>
 </main>
 <!-- bump ?v= on every change so browsers (phones especially) fetch the new scripts -->
-<script src="spells.js?v=1795900000"></script>
-<script src="talents.js?v=1795900000"></script>
-<script src="items.js?v=1795900000"></script>
-<script src="bags.js?v=1795900000"></script>
-<script src="procs.js?v=1795900000"></script>
-<script src="extras.js?v=1795900000"></script>
-<script src="engine.js?v=1795900000"></script>
-<script src="wcl-config.js?v=1795900000"></script>
-<script src="wcl.js?v=1795900000"></script>
-<script src="app.js?v=1795900000"></script>
+<script src="spells.js?v=1796000000"></script>
+<script src="talents.js?v=1796000000"></script>
+<script src="items.js?v=1796000000"></script>
+<script src="bags.js?v=1796000000"></script>
+<script src="procs.js?v=1796000000"></script>
+<script src="extras.js?v=1796000000"></script>
+<script src="engine.js?v=1796000000"></script>
+<script src="wcl-config.js?v=1796000000"></script>
+<script src="wcl.js?v=1796000000"></script>
+<script src="app.js?v=1796000000"></script>
 </body>
 </html>

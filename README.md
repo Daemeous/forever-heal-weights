@@ -87,7 +87,9 @@ Checked against a live Forever report (26 Nov 2026): field layout, talents (`tal
 - **+1% crit**:
   - A non-crit that didn't overheal gains half its size, capped at the target's missing health.
   - A crit gains only the part of its crit bonus that wasn't overheal.
-  - Water Shield / Illumination mana counts in the mana-limited view.
+  - Illumination mana counts in the mana-limited view. Water Shield too, but only from the direct heals that didn't
+    crit while a crit would have given a globe (shield has charges, 3.5 sec since the last globe, no globe from the
+    same cast yet) - not all globes, since being hit makes globes too. The recast GCD is not charged.
   - Forever has no crit rating: gear gives crit as a percentage (0.5%, 1%, ...), so the weight is per +1% crit.
 - **Intellect**: its crit (about 0.0168% per point), plus 15 mana per point for each time you drained your mana from
   full to under 10% (mana-limited view).

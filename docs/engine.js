@@ -19,7 +19,11 @@
   };
   var MANA_PER_INT = 15;
   var REFUNDS = { "Litany of Light": 1 };                       // mana refunds tied to heal casts
-  var CRIT_MANA = { "Water Shield": 1, "Illumination": 1 };    // mana that procs from (heal) crits
+  var CRIT_MANA = { "Illumination": 1 };                         // mana that procs from every (heal) crit
+  // Water Shield: a crit gives a globe only while the shield has charges (3 per cast; being hit also uses them) and
+  // 3.5 sec after the last globe, at most one per cast. So +1% crit is valued from the direct heals that did NOT crit
+  // but would have given a globe if they had (wsElig), not from all globes / crit rate.
+  var WS_ICD = 3.5, WS_CHARGES = 3, WS_DURATION = 600;
   var EXTRA_HEAL_CASTS = { "Power Word: Shield": 1 };          // heal-role casts that produce no heal event
   var ABSORBS = { "Power Word: Shield": 1, "Divine Aegis": 1 }; // absorbs credited to their caster as healing done
   var DOWNRANK_FULL = 17, DOWNRANK_PER = 0.05, DOWNRANK_FLOOR = 0.10;
@@ -63,6 +67,7 @@
       casts: {},        // name|loggedCost -> count
       absorbs: {},      // absorb spell name -> amount (counted as healing done)
       energ: {},        // name -> [amount, count]
+      wsElig: 0,        // direct heals that did not crit while a crit would have given a Water Shield globe
       tIn: 0, tOut: 0, drains: 0, full: false, minMana: 1, deaths: 0,
       active: 0, lastCast: null,   // seconds spent casting (gaps between casts, up to 5 sec each): the rate base for procs
     };
@@ -116,6 +121,7 @@
         guid: guid, name: name || guid, cls: {}, info: null,
         sets: {}, cur: null, all: null, trash: null, enc: null,
         chain: {},           // sid -> open chain group
+        ws: null, wsLast: -1e9, wsPend: [],   // Water Shield {charges, exp} (null = unknown: assumed up), last globe, pending heals
         last: null, lastSpend: null, dead: false, pend: null, drops: {}, infos: [], hl: [], hlB: [], hlK: [], critMult: 1.5,
         offEnc: {}, healSigs: null, maxSeen: {},
         segs: [],            // [start, end] of this player's healing activity (gaps over 20 sec split it): trash pulls
@@ -222,6 +228,7 @@
     } else if (E.type === "energize") {
       var pe = this.players[E.dst];
       if (pe && E.ptype === "0") {
+        if (E.spell === "Water Shield") this.wsGlobe(pe, t);
         var amt = E.amount - E.over, be = this.buckets(pe, t);
         for (var j = 0; j < be.length; j++) { var x = be[j].energ[E.spell] || (be[j].energ[E.spell] = [0, 0]); x[0] += amt; x[1]++; }
       }
@@ -235,6 +242,7 @@
     var sg = p.segs[p.segs.length - 1];
     if (sg && t - sg[1] <= 20) sg[1] = t; else p.segs.push([t, t]);
     if (s) p.cls[s.c] = (p.cls[s.c] || 0) + 1;
+    if (!E.periodic && E.src === guid) this.wsHeal(p, t, E.crit);
     var h = { sid: E.sid, name: E.spell, p: E.periodic ? 1 : 0, a: E.amount, o: E.over, crit: E.crit,
               hp: E.hp, max: E.maxHp, b: this.buckets(p, t), t: t, idx: 0 };
     var chain = s && !E.periodic && s.d && s.d.length > 2;
@@ -246,6 +254,26 @@
       return;
     }
     this.addHeal(p, h);
+  };
+
+  // Water Shield bookkeeping (see WS_ICD). A non-crit direct heal is eligible when the shield is up and the cooldown is
+  // clear; it is held 0.5 sec so that a globe from another hit of the same cast (a Chain Heal jump) cancels it.
+  Analyzer.prototype.wsUp = function (p, t) { return !p.ws || (p.ws.charges > 0 && t < p.ws.exp); };
+  Analyzer.prototype.wsFlush = function (p, t) {
+    while (p.wsPend.length && (t == null || t - p.wsPend[0].t > 0.5)) {
+      var x = p.wsPend.shift();
+      for (var i = 0; i < x.b.length; i++) x.b[i].wsElig++;
+    }
+  };
+  Analyzer.prototype.wsHeal = function (p, t, crit) {
+    this.wsFlush(p, t);
+    if (!p.wsSeen) return;                       // not a Water Shield user (yet)
+    if (!crit && this.wsUp(p, t) && t - p.wsLast >= WS_ICD) p.wsPend.push({ t: t, b: this.buckets(p, t) });
+  };
+  Analyzer.prototype.wsGlobe = function (p, t) {
+    p.wsSeen = true; p.wsLast = t;
+    if (p.ws) p.ws.charges = Math.max(0, p.ws.charges - 1);
+    p.wsPend = p.wsPend.filter(function (x) { return x.t < t - 0.5; });
   };
 
   Analyzer.prototype.flushChain = function (p, g) {
@@ -272,6 +300,7 @@
   Analyzer.prototype.cast = function (p, E) {
     var t = E.t, cost = E.cost || 0, m = E.adv.mana, x = E.adv.max;
     p.dead = false;
+    if (E.spell === "Water Shield") { p.wsSeen = true; p.ws = { charges: WS_CHARGES, exp: t + WS_DURATION }; }
     var b = this.buckets(p, t), key = E.spell + "|" + cost;
     for (var i = 0; i < b.length; i++) {
       b[i].casts[key] = (b[i].casts[key] || 0) + 1;
@@ -331,6 +360,7 @@
       var p = this.players[g];
       for (var sid in p.chain) this.flushChain(p, p.chain[sid]);
       p.chain = {};
+      this.wsFlush(p, null);
       // which talent builds are healing specs (see useSet)
       var Sx = this.S, sets = Object.keys(p.sets).map(function (k) { return p.sets[k]; }), main = null, mainHeal = -1;
       sets.forEach(function (st) {
@@ -452,10 +482,13 @@
     spent -= refund; spentHeal -= refund;
     var eff = healEff + absorbed, hpm = spentHeal > 0 ? eff / spentHeal : 0;
     var critRate = bucket.nHeal ? bucket.nCrit / bucket.nHeal : 0;
+    // mana from +1% crit: Illumination-style refunds scale with crits; Water Shield from the eligible non-crits
+    var wsE = bucket.energ["Water Shield"], wsAvg = wsE && wsE[1] ? wsE[0] / wsE[1] : 0;
+    var critMana1 = (critRate > 0 && critProcs ? critMana / (critRate * 100) : 0) + 0.01 * (bucket.wsElig || 0) * wsAvg;
     var ib = 1 + opt.intBonus / 100;
     function weights(lam) {
       var wCrit = bucket.critD / 100;
-      if (critRate > 0 && critProcs) wCrit += lam * critMana / (critRate * 100);
+      wCrit += lam * critMana1;
       var manaInt = MANA_PER_INT * ib * bucket.drains;
       if (bucket.energ["Water Shield"]) manaInt += MANA_PER_INT * ib * 0.02 * bucket.energ["Water Shield"][1];
       var w = {
@@ -478,7 +511,7 @@
       healPerPoint: healD, absorbed: absorbed, critMult: m,
       // what proc / on-use estimates need: rates per second of casting ("active"), casts by spell name
       rates: { active: bucket.active || 0, casts: castsByName, nCasts: nCasts, healCasts: healCasts, critD: bucket.critD },
-      raw: { critD: bucket.critD, critMana: critMana, critProcs: critProcs, spiritHeal: spiritHeal,
+      raw: { critD: bucket.critD, critMana: critMana, critProcs: critProcs, critMana1: critMana1, wsElig: bucket.wsElig || 0, spiritHeal: spiritHeal,
              wsProcs: bucket.energ["Water Shield"] ? bucket.energ["Water Shield"][1] : 0 },
       spells: Object.keys(spells).map(function (k) { return spells[k]; }).filter(function (x) { return x.eff + x.over > 0 || x.casts; })
         .sort(function (a, b) { return b.eff - a.eff; }),
@@ -504,7 +537,7 @@
     var M = fm.maxMana + L * regen + (fm.other || 0);
     var k = base.eff / hd * base.spent / base.spentHeal, lam = M > 0 ? k / M : 0;
     var critPct = R.critD / (100 * hd);
-    if (base.critRate > 0 && R.critProcs) critPct += R.critMana / (base.critRate * 100) / base.spent * k;
+    critPct += (R.critMana1 || 0) / base.spent * k;
     var ib = 1 + opt.intBonus / 100;
     var pace = tt > 0 ? base.spent / tt : 0, need = pace * L;
     var w = {
@@ -608,7 +641,7 @@
   }
 
   function merge(into, b) {
-    ["eff", "over", "critD", "nHeal", "nCrit", "spiritHeal", "tIn", "tOut", "drains", "deaths", "active"].forEach(function (k) { into[k] += b[k] || 0; });
+    ["eff", "over", "critD", "nHeal", "nCrit", "spiritHeal", "tIn", "tOut", "drains", "deaths", "active", "wsElig"].forEach(function (k) { into[k] += b[k] || 0; });
     into.minMana = Math.min(into.minMana, b.minMana);
     for (var k in b.heals) {
       var r = b.heals[k], s = into.heals[k];
