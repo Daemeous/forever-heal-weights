@@ -5,7 +5,7 @@ SpellAuraOptions / ItemEffect). The model for each effect (what it does to a hea
 healing per mana).
 
 Kinds (all values per use / per proc):
-  buff      s = [healing, crit rating, Int, Spirit, MP5] for dur sec, every cd sec (on-use)
+  buff      s = [healing, % crit, Int, Spirit, MP5] for dur sec, every cd sec (on-use)
   mana      mana restored per use
   costCut   mana cost of every spell reduced by `per` for dur sec
   costPct   mana cost of healing spells -pct% for dur sec (and heal: +% healing, e.g. Natural Alignment Crystal)
@@ -37,7 +37,7 @@ SPEC = {
     20636: (24998, dict(kind="buff", s=[350, 0, 0, 0, 0])),           # Hibernation Crystal
     23046: (28779, dict(kind="buff", s=[130, 0, 0, 0, 0])),           # The Restrained Essence of Sapphiron
     272439: (1291103, dict(kind="buff", s=[0, 0, 0, 72, 0])),         # Serenity Field
-    19952: (24498, dict(kind="buff", s=[0, 140, 0, 0, 0])),           # Gri'lek's Charm of Valor (+10% spell crit)
+    19952: (24498, dict(kind="buff", s=[0, 10, 0, 0, 0])),           # Gri'lek's Charm of Valor (+10% spell crit)
     13937: (18264, dict(kind="buff", s=[0, 0, 20, 0, 0], note="also +20 Intellect for the party (not counted)")),
     13143: (17252, dict(kind="buff", s=[0, 0, 0, 0, 22], note="only while its 500-damage shield holds: an upper bound")),
     272438: (1291101, dict(kind="critUntil", pct=5)),                 # Weakness Analyzer
@@ -208,18 +208,18 @@ HEALER_MASK = 2 | 16 | 64 | 1024
 
 
 def passive(sid):
-    """[healing, crit rating, Int, Spirit, MP5] of a passive stat bonus, or None when it has none"""
+    """[healing, % crit, Int, Spirit, MP5] of a passive stat bonus, or None when it has none"""
     v, any_ = [0, 0, 0, 0, 0], False
     for e in seff.get(str(sid), {}).values():
         a, bp, mv = e["EffectAura"], float(e["EffectBasePointsF"] or 0), e["EffectMiscValue_0"]
         if a == "135": v[0] = max(v[0], bp); any_ = True
         elif a == "13" and mv == "126" and not v[0]: v[0] = bp; any_ = True     # spell power counts as healing
-        elif a == "57": v[1] += bp * 14; any_ = True
-        elif a == "189" and int(mv) & 1024: v[1] += bp; any_ = True
+        elif a == "57": v[1] += bp; any_ = True
+        elif a == "189" and int(mv) & 1024: v[1] += bp / 14; any_ = True
         elif a == "29" and mv == "3": v[2] += bp; any_ = True
         elif a == "29" and mv == "4": v[3] += bp; any_ = True
         elif a == "85" and mv == "0": v[4] += bp; any_ = True
-    return [round(x) for x in v] if any_ and any(v) else None
+    return [round(x, 2) if i == 1 else round(x) for i, x in enumerate(v)] if any_ and any(v) else None
 
 
 def build_sets():

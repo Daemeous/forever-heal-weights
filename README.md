@@ -10,7 +10,7 @@ The log is read by your own browser. Nothing is uploaded anywhere.
 
 ## What you get
 
-- Weights relative to +1 bonus healing for crit rating, Intellect, Spirit and MP5. They come for the whole log,
+- Weights relative to +1 bonus healing for +1% crit, Intellect, Spirit and MP5. They come for the whole log,
   all boss fights together, trash, and each encounter.
 - Two views:
   - **Throughput**: mana is free. This tells you what makes your heals bigger.
@@ -88,7 +88,7 @@ Checked against a live Forever report (26 Nov 2026): field layout, talents (`tal
   - A non-crit that didn't overheal gains half its size, capped at the target's missing health.
   - A crit gains only the part of its crit bonus that wasn't overheal.
   - Water Shield / Illumination mana counts in the mana-limited view.
-  - 14 crit rating = 1%.
+  - Forever has no crit rating: gear gives crit as a percentage (0.5%, 1%, ...), so the weight is per +1% crit.
 - **Intellect**: its crit (about 0.0168% per point), plus 15 mana per point for each time you drained your mana from
   full to under 10% (mana-limited view).
 - **Spirit / MP5**: regen only counts while you were below full mana, split into inside and outside the

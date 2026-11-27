@@ -17,7 +17,7 @@
     Druid:   { regen: 0.125, casting: 0.5, sg: 0, intBonus: 0, critPerInt: 0.0167 },
     Paladin: { regen: 0.125, casting: 0,   sg: 0, intBonus: 0, critPerInt: 0.0167 },
   };
-  var MANA_PER_INT = 15, RATING_PER_CRIT = 14;
+  var MANA_PER_INT = 15;
   var REFUNDS = { "Litany of Light": 1 };                       // mana refunds tied to heal casts
   var CRIT_MANA = { "Water Shield": 1, "Illumination": 1 };    // mana that procs from (heal) crits
   var EXTRA_HEAL_CASTS = { "Power Word: Shield": 1 };          // heal-role casts that produce no heal event
@@ -460,7 +460,6 @@
       if (bucket.energ["Water Shield"]) manaInt += MANA_PER_INT * ib * 0.02 * bucket.energ["Water Shield"][1];
       var w = {
         healing: healD,
-        critRating: wCrit / RATING_PER_CRIT,
         intellect: wCrit * opt.critPerInt * ib + (opt.intHeal || 0) / 100 * ib * healD + lam * manaInt,
         spirit: (1 + (opt.spiBonus || 0) / 100) * (opt.sg / 100 * healD + spiritHeal + lam * opt.regen * (bucket.tOut + opt.casting / 100 * bucket.tIn)),
         mp5: lam * 0.2 * (bucket.tIn + bucket.tOut),
@@ -510,7 +509,6 @@
     var pace = tt > 0 ? base.spent / tt : 0, need = pace * L;
     var w = {
       healing: 1,
-      critRating: critPct / RATING_PER_CRIT,
       intellect: ib * (MANA_PER_INT * lam + opt.critPerInt * critPct + (opt.intHeal || 0) / 100 +
                        (R.wsProcs ? MANA_PER_INT * 0.02 * R.wsProcs / base.spent * k : 0)),
       spirit: (1 + (opt.spiBonus || 0) / 100) * (opt.sg / 100 + R.spiritHeal / hd + opt.regen * L * share * lam),

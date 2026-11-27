@@ -2,7 +2,7 @@
 // Which ones exist: method.gg "List of all Consumables and Enchants in WoW Forever" (Tayder, 2 Nov 2026, written on
 // the Forever beta). Values: the Forever client (build 70959: SpellItemEnchantment / SpellEffect) where it has them,
 // otherwise the page (food buffs are server-side, and the +2% crit on Owl / Sages / Whale is from the page).
-// s: [healing (spell power counts as healing), crit rating (14 = 1%), Intellect, Spirit, MP5]
+// s: [healing (spell power counts as healing), % crit, Intellect, Spirit, MP5]
 var FOREVER_EXTRAS = {
   meta: { sources: "Forever client 1.60.1.70959 + method.gg Forever consumables & enchants list (2 Nov 2026, beta)" },
   enchants: [
@@ -28,21 +28,21 @@ var FOREVER_EXTRAS = {
     { slot: "One-hand weapon", n: "Enchant Weapon - Mighty Spirit", s: [0, 0, 0, 22, 0] },
     { slot: "One-hand weapon", n: "Enchant Weapon - Insight", s: [0, 0, 0, 0, 0], new: 1, proc: "chance on spell cast: +100% Spirit for 10 sec (not scored)" },
     { slot: "Shield", n: "Enchant Shield - Superior Spirit", s: [0, 0, 0, 9, 0] },
-    { slot: "Shield", n: "Enchant Shield - Critical Strike", s: [0, 14, 0, 0, 0], new: 1 },
+    { slot: "Shield", n: "Enchant Shield - Critical Strike", s: [0, 1, 0, 0, 0], new: 1 },
     { slot: "Off hand (held)", n: "Enchant Off-Hand - Excellent Spirit", s: [0, 0, 0, 12, 0], new: 1 },
     { slot: "Off hand (held)", n: "Enchant Off-Hand - Superior Intellect", s: [0, 0, 9, 0, 0], new: 1 },
     { slot: "Off hand (held)", n: "Enchant Off-Hand - Wisdom", s: [0, 0, 6, 5, 0], new: 1 },
     { slot: "Weapon (temporary)", n: "Brilliant Mana Oil", s: [30, 0, 0, 0, 15], note: "Forever values (Classic: 25 healing, 12 MP5)" },
-    { slot: "Weapon (temporary)", n: "Brilliant Wizard Oil", s: [36, 14, 0, 0, 0] },
+    { slot: "Weapon (temporary)", n: "Brilliant Wizard Oil", s: [36, 1, 0, 0, 0] },
   ],
   // kind: elixir / flask / food / potion / rune. up: seconds the buff lasts per use (0 = whole fight);
   // cd: cooldown in seconds; mana: mana restored per use (average); maxMana: extra mana pool
   consumables: [
     { kind: "Flask", n: "Flask of Distilled Wisdom", s: [0, 0, 0, 0, 0], maxMana: 2000, note: "persists through death" },
     { kind: "Elixir", n: "Greater Cleric's Elixir", s: [40, 0, 0, 0, 0], new: 1 },
-    { kind: "Elixir", n: "Elixir of the Owl", s: [0, 28, 25, 0, 0], new: 1 },
-    { kind: "Elixir", n: "Elixir of Sages", s: [0, 28, 0, 25, 0], new: 1 },
-    { kind: "Elixir", n: "Elixir of the Whale", s: [0, 28, 0, 25, 0], new: 1 },
+    { kind: "Elixir", n: "Elixir of the Owl", s: [0, 2, 25, 0, 0], new: 1 },
+    { kind: "Elixir", n: "Elixir of Sages", s: [0, 2, 0, 25, 0], new: 1 },
+    { kind: "Elixir", n: "Elixir of the Whale", s: [0, 2, 0, 25, 0], new: 1 },
     { kind: "Elixir", n: "Elixir of the Sages", s: [0, 0, 18, 18, 0] },
     { kind: "Elixir", n: "Elixir of Greater Intellect", s: [0, 0, 25, 0, 0] },
     { kind: "Elixir", n: "Elixir of Cunning", s: [0, 0, 25, 0, 0], new: 1 },
@@ -56,7 +56,7 @@ var FOREVER_EXTRAS = {
     { kind: "Food", n: "Raptor Rouladen", s: [0, 0, 15, 0, 0], new: 1 },
     { kind: "Food", n: "Wicked Smoothie", s: [0, 0, 0, 20, 0], new: 1 },
     { kind: "Food", n: "Spicy Smoothie", s: [0, 0, 0, 15, 0], new: 1 },
-    { kind: "Food", n: "Grilled Squid", s: [0, 14, 0, 0, 0] },
+    { kind: "Food", n: "Grilled Squid", s: [0, 1, 0, 0, 0] },
     { kind: "Potion", n: "Major Mender's Potion", s: [88, 0, 0, 0, 0], up: 30, cd: 120, new: 1 },
     { kind: "Potion", n: "Major Mana Potion", s: [0, 0, 0, 0, 0], mana: 1800, cd: 120, note: "1350-2250 mana" },
     { kind: "Potion", n: "Major Rejuvenation Potion", s: [0, 0, 0, 0, 0], mana: 1600, cd: 120, note: "1440-1760 health and mana" },

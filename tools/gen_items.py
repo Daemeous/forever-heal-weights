@@ -16,13 +16,13 @@ out = {}
 for it in _items.all_items(BUILD):
     st = it["stats"]
     heal = st.get("HealingPower", 0) + st.get("SpellPower", 0)
-    vals = [heal, st.get("CritRating", 0), st.get("Intellect", 0), st.get("Spirit", 0), st.get("MP5", 0)]
+    vals = [heal, st.get("CritRating", 0) / 14, st.get("Intellect", 0), st.get("Spirit", 0), st.get("MP5", 0)]
     if not any(vals) and str(it["id"]) not in PROC_IDS:
         continue
     c, sc = it["cls_sub"]
-    # [name, inventory type, item class, subclass, required level, quality, healing, crit rating, Int, Spirit, MP5,
+    # [name, inventory type, item class, subclass, required level, quality, healing, % crit (Forever items only give whole / half percents), Int, Spirit, MP5,
     #  allowed-class mask (-1 any), unique, source tiers, source text]
-    out[str(it["id"])] = [it["name"], it["inv"], c, sc, it["req_level"], it["quality"]] + [round(v) for v in vals] + \
+    out[str(it["id"])] = [it["name"], it["inv"], c, sc, it["req_level"], it["quality"]] + [round(v, 2) if i == 1 else round(v) for i, v in enumerate(vals)] + \
                          [it["allow"] if it["allow"] not in (0,) else -1, 1 if it.get("unique") else 0]
     # where it comes from: tiers P (dungeon / quest / crafted / rep / vendor), V PvP, R Classic raid (not in Forever's
     # raids), L later content, F other faction; "" = no known source. Plus a short source text.

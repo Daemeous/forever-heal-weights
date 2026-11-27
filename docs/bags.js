@@ -2,7 +2,7 @@
 // best gear the character owns for the stat weights the page worked out. Runs in the browser and in Node.
 (function (root) {
   "use strict";
-  // item table row: [name, invType, itemClass, subclass, reqLevel, quality, heal, crit, int, spi, mp5, classMask, unique]
+  // item table row: [name, invType, itemClass, subclass, reqLevel, quality, heal, crit %, int, spi, mp5, classMask, unique]
   var CLASS_BIT = { Paladin: 2, Priest: 16, Shaman: 64, Druid: 1024 };
   var ARMOR = { Priest: [0, 1], Paladin: [0, 1, 2, 3, 4, 6, 7], Shaman: [0, 1, 2, 3, 6, 9], Druid: [0, 1, 2, 8] };
   var WEAPON = { Priest: [4, 10, 15, 19], Paladin: [0, 1, 4, 5, 6, 7, 8], Shaman: [0, 1, 4, 5, 10, 13, 15], Druid: [4, 5, 6, 10, 13, 15] };
@@ -74,7 +74,7 @@
   // stats, plus the estimated worth of the item's on-use / proc effect when ctx (see procValue) is given
   function value(row, w, ctx, id) {
     if (!row) return 0;
-    var v = w.healing * row[6] + w.critRating * row[7] + w.intellect * row[8] + w.spirit * row[9] + w.mp5 * row[10];
+    var v = w.healing * row[6] + w.critPct * row[7] + w.intellect * row[8] + w.spirit * row[9] + w.mp5 * row[10];
     var P = ctx && ctx.procs && ctx.procs.items[id];
     return P ? v + procValue(P, ctx).v : v;
   }
@@ -202,7 +202,7 @@
     return { v: 0, how: P.note || "not scored" };
   }
 
-  // w: weights relative to +1 healing ({healing, critRating, intellect, spirit, mp5})
+  // w: weights relative to +1 healing ({healing, critPct (+1% crit), intellect, spirit, mp5})
   // On-use cooldowns replayed over the log's pulls (ctx.pulls from engine.analyse: boss fights + trash pulls). Used at the
   // first moment it's ready in a pull, again on cooldown. Saved for bosses (ctx.policy "boss", the default) it's only used
   // in boss fights; "all" uses it on trash too. Each counted pull gives an offset (sec into the fight until it's ready),
@@ -386,7 +386,7 @@
   }
 
   function statValue(st, w) {
-    return w.healing * st[0] + w.critRating * st[1] + w.intellect * st[2] + w.spirit * st[3] + w.mp5 * st[4];
+    return w.healing * st[0] + w.critPct * st[1] + w.intellect * st[2] + w.spirit * st[3] + w.mp5 * st[4];
   }
 
   // enchants and consumables in +healing equivalents. ctx: { w, lambda, h1 (healing per +1 healing per second),

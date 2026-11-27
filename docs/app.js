@@ -3,7 +3,7 @@
   var W = window.ForeverWeights, $ = function (id) { return document.getElementById(id); };
   var an = null, result = null, view = "manaLimited", opts = {};
   var INPUTS = ["bonus", "intBonus", "sg", "casting", "spiBonus", "intHeal", "regen", "critPerInt", "lambda"];
-  var STATS = [["healing", "Healing"], ["critRating", "Crit rating"], ["intellect", "Intellect"], ["spirit", "Spirit"], ["mp5", "MP5"]];
+  var STATS = [["healing", "Healing"], ["critPct", "+1% crit"], ["intellect", "Intellect"], ["spirit", "Spirit"], ["mp5", "MP5"]];
 
   $("build").textContent = FOREVER_SPELLS.meta.build;
 
