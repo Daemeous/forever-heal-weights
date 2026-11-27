@@ -377,8 +377,31 @@
       var sids = setsWith(pool.map(function (x) { return x.id; }), opts.ctx);
       rows.sets = sids.map(function (sid) { return evalSet(sid, pick, cands, opts.ctx, {}); }).filter(function (e) { return e.k; })
         .sort(function (a, b) { return b.gain - a.gain; });
-      rows.setPick = pickSets(sids, pick, cands, opts.ctx).chosen;
+      var SP = pickSets(sids, pick, cands, opts.ctx);
+      rows.setPick = SP.chosen;
     }
+    // the merged gear set: one pick per slot, set pieces where a chosen set beats the per-slot picks, the better
+    // weapon setup, and the set bonuses; total = everything added up
+    var gear = [], setOf = {};
+    (rows.setPick || []).forEach(function (c) { c.pieces.forEach(function (o) { setOf[o.slot] = { set: c, loss: o.loss }; }); });
+    SLOTS.forEach(function (sl) {
+      if (!sl[2]) {
+        var L = sl[0], s = setOf[L];
+        if (s) gear.push({ slot: L, it: s.set.pieces.filter(function (o) { return o.slot === L; })[0].it, set: s.set.name + " " + s.set.k + "pc",
+                           instead: s.loss > 0.5 ? top(sl[1], 1)[0] : null, loss: s.loss });
+        else { var b = top(sl[1], 1)[0]; if (b) gear.push({ slot: L, it: b }); }
+        return;
+      }
+      var t = top(sl[1], 2);
+      if (t[0]) gear.push({ slot: sl[0] + " 1", it: t[0] });
+      if (t[1]) gear.push({ slot: sl[0] + " 2", it: t[1] });   // two different items (the unique flag is often missing)
+    });
+    var w2 = top(TWOH, 1)[0], wm = top(MAIN, 1)[0], wo = top(OFF, 1)[0];
+    if (w2 && w2.v >= (wm ? wm.v : 0) + (wo ? wo.v : 0)) gear.push({ slot: "Two-hand", it: w2 });
+    else { if (wm) gear.push({ slot: "Main hand", it: wm }); if (wo) gear.push({ slot: "Off hand", it: wo }); }
+    var bonus = (rows.setPick || []).reduce(function (t, c) { return t + c.v; }, 0);
+    rows.gear = { items: gear, sets: rows.setPick || [], bonus: bonus,
+                  total: gear.reduce(function (t, g) { return t + g.it.v; }, 0) + bonus };
     rows.push({ slot: "Two-hand", items: top(TWOH, n) });
     rows.push({ slot: "Main hand / one-hand", items: top(MAIN, n) });
     rows.push({ slot: "Off hand / shield", items: top(OFF, n) });

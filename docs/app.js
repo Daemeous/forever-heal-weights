@@ -355,6 +355,19 @@
       return x ? esc(x.name) + (x.proc ? ' <span class="tag">use / proc</span>' : "") + ' <span class="muted">' + x.v.toFixed(0) +
         '</span><br><span class="note">' + esc(x.src) + "</span>" : "";
     }
+    var G = rows.gear;
+    $("bisgear").innerHTML = "<thead><tr><th>Slot</th><th>Item</th><th>Worth</th><th></th></tr></thead><tbody>" +
+      G.items.map(function (g) {
+        return '<tr><td>' + esc(g.slot) + '</td><td class="enc" style="text-align:left">' + esc(g.it.name) + (g.it.proc ? ' <span class="tag">use / proc</span>' : "") +
+          '<br><span class="note">' + esc(g.it.src) + "</span></td><td>" + g.it.v.toFixed(0) + '</td><td class="enc" style="text-align:left">' +
+          (g.set ? '<span class="tag">' + esc(g.set) + "</span>" + (g.instead ? ' <span class="note">instead of ' + esc(g.instead.name) + " (" + g.instead.v.toFixed(0) + ")</span>" : "") : "") +
+          "</td></tr>";
+      }).join("") +
+      (G.sets.length ? G.sets.map(function (c) {
+        return '<tr><td>Set bonus</td><td class="enc" style="text-align:left">' + esc(c.name) + " (" + c.k + ' pieces)</td><td>' + c.v.toFixed(0) +
+          '</td><td class="note">net +' + c.gain.toFixed(0) + " vs the best single items</td></tr>";
+      }).join("") : '<tr><td>Set bonus</td><td class="note" colspan="3">none: no set bonus beats the best single items for these weights</td></tr>') +
+      '<tr><td><b>Total</b></td><td></td><td><b>' + G.total.toFixed(0) + "</b></td><td></td></tr></tbody>";
     $("bis").innerHTML = "<thead><tr><th>Slot</th><th>Best</th><th>2nd</th><th>3rd</th><th>4th</th></tr></thead><tbody>" +
       rows.map(function (x) {
         return '<tr><td>' + x.slot + "</td>" + [0, 1, 2, 3].map(function (i) { return '<td class="enc" style="text-align:left">' + it(x.items[i]) + "</td>"; }).join("") + "</tr>";
