@@ -314,7 +314,11 @@
       });
       var pairs = keep.map(function (k) { return [k, k]; });
       for (var i = 0; pairs.length < n; i++) pairs.push([restC[i] || null, restB[i] || restC[i] || null]);
-      pairs.forEach(function (pr, i) { rows.push({ slot: s[0] + (n > 1 ? " " + (i + 1) : ""), cur: pr[0], best: pr[1] }); });
+      var t1 = SP.locked[s[0]] ? top(s[1], 1)[0] : null, instead = t1 && t1.id !== SP.locked[s[0]].id ? t1 : null;
+      pairs.forEach(function (pr, i) {
+        var cs = pr[1] && SP.chosen.filter(function (c) { return ctx.procs.sets[c.sid].items.indexOf(+pr[1].id) >= 0; })[0];
+        rows.push({ slot: s[0] + (n > 1 ? " " + (i + 1) : ""), cur: pr[0], best: pr[1], set: cs ? cs.name + " (" + cs.k + "-piece bonus)" : null, instead: instead });
+      });
     });
     // weapons: best two-hander vs best main hand + off hand, shown as one row with the net gain
     var b2 = top(TWOH, 1)[0], bm = top(MAIN, 1)[0], bo = top(OFF, 1)[0];
@@ -387,7 +391,7 @@
     SLOTS.forEach(function (sl) {
       if (!sl[2]) {
         var L = sl[0], s = setOf[L];
-        if (s) gear.push({ slot: L, it: s.set.pieces.filter(function (o) { return o.slot === L; })[0].it, set: s.set.name + " " + s.set.k + "pc",
+        if (s) gear.push({ slot: L, it: s.set.pieces.filter(function (o) { return o.slot === L; })[0].it, set: s.set.name + " (" + s.set.k + "-piece bonus)",
                            instead: s.loss > 0.5 ? top(sl[1], 1)[0] : null, loss: s.loss });
         else { var b = top(sl[1], 1)[0]; if (b) gear.push({ slot: L, it: b }); }
         return;

@@ -331,7 +331,8 @@
     $("bags").innerHTML = "<thead><tr><th>Slot</th><th>Wearing</th><th>Best you own</th><th>Gain</th></tr></thead><tbody>" +
       B.rows.map(function (x) {
         var st = x.slot === "Set bonuses";
-        return "<tr" + (x.change ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur, st) + "</td><td>" + (x.change ? "<b>" + cell(x.best, st) + "</b>" : cell(x.best, st)) +
+        var tag = x.set ? ' <span class="tag">' + esc(x.set) + "</span>" + (x.instead ? ' <span class="note">instead of ' + esc(x.instead.name) + " (" + x.instead.v.toFixed(0) + ")</span>" : "") : "";
+        return "<tr" + (x.change || x.set ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur, st) + "</td><td>" + (x.change ? "<b>" + cell(x.best, st) + "</b>" : cell(x.best, st)) + tag +
           "</td><td>" + (x.change ? (x.gain >= 0 ? "+" : "−") + Math.abs(x.gain).toFixed(0) : "") + "</td></tr>";
       }).join("") + "</tbody>";
     $("bagnote").innerHTML = (bagExp.name ? esc(bagExp.name) + " \u00b7 " : "") + cls + " level " + lvl + " \u00b7 " + esc(bagExp.format || "export") +
