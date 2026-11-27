@@ -311,6 +311,18 @@
   $("bagscope").addEventListener("change", function () { renderBags(); renderBis(); });
   // what the on-use / proc estimates (bags.js procValue) need from the chosen scope; fight models use their base scope's
   // rates (casts per second of casting, healing per +1 healing) with the model's own healing per mana
+  // a stat vector [healing, % crit, Int, Spirit, MP5] as text: "+25 healing, -15 Int, +13 Spirit" (zeros left out)
+  var ST_NAMES = ["healing", "% crit", "Int", "Spirit", "MP5"];
+  function fmtSt(st, signed) {
+    if (!st) return "";
+    var out = [];
+    st.forEach(function (v, i) {
+      if (Math.abs(v) < 0.05) return;
+      var n = i === 1 ? (Math.round(Math.abs(v) * 10) / 10).toString() : Math.round(Math.abs(v)).toString();
+      out.push((signed ? (v > 0 ? "+" : "\u2212") : (v < 0 ? "-" : "")) + n + (i === 1 ? "" : " ") + ST_NAMES[i]);
+    });
+    return out.join(", ");
+  }
   function gearCtx() {
     var r = result, scope = r[$("bagscope").value] || r.whole, b = scope.base || scope;
     var act = b.rates && b.rates.active > 0 ? b.rates.active : b.duration;
@@ -333,13 +345,15 @@
         var st = x.slot === "Set bonuses";
         var tag = x.set ? ' <span class="tag">' + esc(x.set) + "</span>" + (x.instead ? ' <span class="note">instead of ' + esc(x.instead.name) + " (" + x.instead.v.toFixed(0) + ")</span>" : "") : "";
         return "<tr" + (x.change || x.set ? "" : ' class="dim"') + "><td>" + x.slot + "</td><td>" + cell(x.cur, st) + "</td><td>" + (x.change ? "<b>" + cell(x.best, st) + "</b>" : cell(x.best, st)) + tag +
-          "</td><td>" + (x.change ? (x.gain >= 0 ? "+" : "−") + Math.abs(x.gain).toFixed(0) : "") + "</td></tr>";
+          "</td><td>" + (x.change ? (x.gain >= 0 ? "+" : "−") + Math.abs(x.gain).toFixed(0) +
+          (fmtSt(x.dst, true) ? '<br><span class="note">' + fmtSt(x.dst, true) + "</span>" : "") : "") +
+          (st && x.best && x.best.other && x.best.other.length ? '<br><span class="note">also: ' + esc(x.best.other.join("; ")) + "</span>" : "") + "</td></tr>";
       }).join("") + "</tbody>";
     $("bagnote").innerHTML = (bagExp.name ? esc(bagExp.name) + " \u00b7 " : "") + cls + " level " + lvl + " \u00b7 " + esc(bagExp.format || "export") +
       (bagExp.bank ? " (bank included)" : " (equipped + bags; no bank in this export)") + " \u00b7 " + B.owned + " items read" +
       (B.unknown ? " (" + B.unknown + " have no healer stats or aren't in the item data)" : "") +
       " \u00b7 values in +healing (" + (view === "manaLimited" ? "mana-limited" : "throughput") + ", " + $("bagscope").selectedOptions[0].text.toLowerCase() + ")" +
-      " \u00b7 <b>total gain +" + B.total.toFixed(0) + " healing</b>";
+      " \u00b7 <b>total gain +" + B.total.toFixed(0) + " healing</b>" + (fmtSt(B.dst, true) ? " (" + fmtSt(B.dst, true) + ")" : "");
   }
 
   // ------------------------------------------------------------------ best in slot + enchants / consumables
@@ -361,14 +375,17 @@
       G.items.map(function (g) {
         return '<tr><td>' + esc(g.slot) + '</td><td class="enc" style="text-align:left">' + esc(g.it.name) + (g.it.proc ? ' <span class="tag">use / proc</span>' : "") +
           '<br><span class="note">' + esc(g.it.src) + "</span></td><td>" + g.it.v.toFixed(0) + '</td><td class="enc" style="text-align:left">' +
-          (g.set ? '<span class="tag">' + esc(g.set) + "</span>" + (g.instead ? ' <span class="note">instead of ' + esc(g.instead.name) + " (" + g.instead.v.toFixed(0) + ")</span>" : "") : "") +
+          (g.set ? '<span class="tag">' + esc(g.set) + "</span>" + (g.instead ? ' <span class="note">instead of ' + esc(g.instead.name) + " (" + g.instead.v.toFixed(0) + "): " +
+            (fmtSt(FB.stAdd(FB.stOf(g.it), FB.stOf(g.instead), -1), true) || "same stats") + "</span>" : "") : "") +
           "</td></tr>";
       }).join("") +
       (G.sets.length ? G.sets.map(function (c) {
-        return '<tr><td>Set bonus</td><td class="enc" style="text-align:left">' + esc(c.name) + " (" + c.k + ' pieces)</td><td>' + c.v.toFixed(0) +
-          '</td><td class="note">net +' + c.gain.toFixed(0) + " vs the best single items</td></tr>";
+        var bon = [fmtSt(c.bst, true)].concat(c.other || []).filter(Boolean).join("; ");
+        return '<tr><td>Set bonus</td><td class="enc" style="text-align:left">' + esc(c.name) + " (" + c.k + ' pieces)' + (bon ? '<br><span class="note">' + esc(bon) + "</span>" : "") +
+          '</td><td>' + c.v.toFixed(0) + '</td><td class="note">net +' + c.gain.toFixed(0) + " vs the best single items" +
+          (fmtSt(c.dst, true) ? "<br>stats: " + fmtSt(c.dst, true) + ((c.other || []).length ? " + the bonuses above" : "") : "") + "</td></tr>";
       }).join("") : '<tr><td>Set bonus</td><td class="note" colspan="3">none: no set bonus beats the best single items for these weights</td></tr>') +
-      '<tr><td><b>Total</b></td><td></td><td><b>' + G.total.toFixed(0) + "</b></td><td></td></tr></tbody>";
+      '<tr><td><b>Total</b></td><td class="note" style="text-align:left">' + fmtSt(G.st) + '</td><td><b>' + G.total.toFixed(0) + "</b></td><td></td></tr></tbody>";
     $("bis").innerHTML = "<thead><tr><th>Slot</th><th>Best</th><th>2nd</th><th>3rd</th><th>4th</th></tr></thead><tbody>" +
       rows.map(function (x) {
         return '<tr><td>' + x.slot + "</td>" + [0, 1, 2, 3].map(function (i) { return '<td class="enc" style="text-align:left">' + it(x.items[i]) + "</td>"; }).join("") + "</tr>";

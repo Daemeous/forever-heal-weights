@@ -272,6 +272,14 @@
     }
     return { locked: locked, chosen: chosen };
   }
+  // stat vectors [healing, % crit, Int, Spirit, MP5]: an item's, a set's active stat bonuses, sums and differences
+  function stOf(x) { return x && x.st ? x.st : [0, 0, 0, 0, 0]; }
+  function stAdd(a, b, sign) { return a.map(function (v, i) { return v + (sign || 1) * b[i]; }); }
+  function setStats(S, k) {
+    var st = [0, 0, 0, 0, 0], other = [];
+    S.b.forEach(function (b) { if (b.k > k) return; if (b.kind === "stat") st = stAdd(st, b.s); else if (b.kind !== "none") other.push(b.text); });
+    return { st: st, other: other };
+  }
   function setsWith(ids, ctx) {
     var have = {}, out = [];
     ids.forEach(function (id) { have[id] = 1; });
@@ -284,9 +292,9 @@
     var I = ITEMS.items, unknown = 0, counts = {};
     exp.owned.forEach(function (id) { counts[id] = (counts[id] || 0) + 1; if (!I[id]) unknown++; });
     var pool = Object.keys(counts).filter(function (id) { return usable(I[id], cls, level); })
-      .map(function (id) { var r = I[id]; return { id: +id, name: r[0], inv: r[1], copies: counts[id], unique: r[12], v: value(r, w, ctx, id), row: r }; });
+      .map(function (id) { var r = I[id]; return { id: +id, name: r[0], inv: r[1], copies: counts[id], unique: r[12], v: value(r, w, ctx, id), row: r, st: r.slice(6, 11) }; });
     var eq = exp.equipped.filter(function (id) { return I[id]; })
-      .map(function (id) { var r = I[id]; return { id: id, name: r[0], inv: r[1], v: value(r, w, ctx, id), row: r }; });
+      .map(function (id) { var r = I[id]; return { id: id, name: r[0], inv: r[1], v: value(r, w, ctx, id), row: r, st: r.slice(6, 11) }; });
     function top(types, n) {
       var c = [];
       pool.filter(function (x) { return types.indexOf(x.inv) >= 0; }).forEach(function (x) {
@@ -328,28 +336,32 @@
       if (!a && !b) return null;
       if (!b) return a;
       if (!a) return b;
-      return { id: a.id + "+" + b.id, name: a.name + " + " + b.name, v: a.v + b.v };
+      return { id: a.id + "+" + b.id, name: a.name + " + " + b.name, v: a.v + b.v, st: stAdd(stOf(a), stOf(b)) };
     }
     rows.push({ slot: "Weapons", cur: combo(cm, co), best: twoV > pairV ? b2 : combo(bm || cm, bo || co) });
     if (ctx && ctx.procs && ctx.procs.sets) {
-      var SS = ctx.procs.sets, wornSets = [], wv = 0;
+      var SS = ctx.procs.sets, wornSets = [], wv = 0, wst = [0, 0, 0, 0, 0], wo = [];
       setsWith(eq.map(function (x) { return x.id; }), ctx).forEach(function (sid) {
         var S = SS[sid], k = eq.filter(function (x) { return S.items.indexOf(+x.id) >= 0; }).length, v = setBonusV(S, k, ctx);
-        if (v > 0) { wornSets.push(S.n + " " + k + "pc"); wv += v; }
+        if (v > 0) { wornSets.push(S.n + " " + k + "pc"); wv += v; var ss = setStats(S, k); wst = stAdd(wst, ss.st); wo = wo.concat(ss.other); }
       });
       var bn = SP.chosen.map(function (c) { return c.name + " " + c.k + "pc"; }), bv = SP.chosen.reduce(function (t, c) { return t + c.v; }, 0);
+      var bst = [0, 0, 0, 0, 0], bo = [];
+      SP.chosen.forEach(function (c) { var ss = setStats(SS[c.sid], c.k); bst = stAdd(bst, ss.st); bo = bo.concat(ss.other); });
       if (wornSets.length || bn.length) {
-        rows.push({ slot: "Set bonuses", cur: wornSets.length ? { id: wornSets.join(), name: wornSets.join(", "), v: wv } : null,
-                    best: bn.length ? { id: bn.join(), name: bn.join(", "), v: bv } : null });
+        rows.push({ slot: "Set bonuses", cur: wornSets.length ? { id: wornSets.join(), name: wornSets.join(", "), v: wv, st: wst, other: wo } : null,
+                    best: bn.length ? { id: bn.join(), name: bn.join(", "), v: bv, st: bst, other: bo } : null });
       }
     }
-    var total = 0;
+    var total = 0, dst = [0, 0, 0, 0, 0];
     rows.forEach(function (r) {
+      r.dst = stAdd(stOf(r.best), stOf(r.cur), -1);
       r.gain = (r.best ? r.best.v : 0) - (r.cur ? r.cur.v : 0);
       r.change = !!(r.best && (!r.cur || r.best.id !== r.cur.id));
       total += r.gain;
+      if (r.change) dst = stAdd(dst, r.dst);
     });
-    return { rows: rows, total: total, unknown: unknown, owned: exp.owned.length, equippedKnown: eq.length, sets: SP.chosen };
+    return { rows: rows, total: total, dst: dst, unknown: unknown, owned: exp.owned.length, equippedKnown: eq.length, sets: SP.chosen };
   }
 
   // ------------------------------------------------------------------ best in slot from the whole item database
@@ -367,7 +379,7 @@
     for (var id in I) {
       var r = I[id];
       if (!usable(r, cls, level) || !allowed(r)) continue;
-      pool.push({ id: +id, name: r[0], inv: r[1], v: value(r, w, opts.ctx, id), proc: !!(opts.ctx && opts.ctx.procs && opts.ctx.procs.items[id]), src: r[14] || "source unknown", tier: r[13] || "", unique: r[12] });
+      pool.push({ id: +id, name: r[0], inv: r[1], v: value(r, w, opts.ctx, id), proc: !!(opts.ctx && opts.ctx.procs && opts.ctx.procs.items[id]), src: r[14] || "source unknown", tier: r[13] || "", unique: r[12], st: r.slice(6, 11) });
     }
     function top(types, k) {
       return pool.filter(function (x) { return types.indexOf(x.inv) >= 0; }).sort(function (a, b) { return b.v - a.v; }).slice(0, k);
@@ -404,8 +416,20 @@
     if (w2 && w2.v >= (wm ? wm.v : 0) + (wo ? wo.v : 0)) gear.push({ slot: "Two-hand", it: w2 });
     else { if (wm) gear.push({ slot: "Main hand", it: wm }); if (wo) gear.push({ slot: "Off hand", it: wo }); }
     var bonus = (rows.setPick || []).reduce(function (t, c) { return t + c.v; }, 0);
+    // per set: stats of its pieces minus the items they replace, plus its bonuses (vs the best single items)
+    (rows.setPick || []).forEach(function (c) {
+      var ss = setStats(opts.ctx.procs.sets[c.sid], c.k), d = ss.st;
+      c.pieces.forEach(function (o) {
+        var sl = SINGLE.filter(function (x) { return x[0] === o.slot; })[0], t1 = top(sl[1], 1)[0];
+        d = stAdd(stAdd(d, stOf(o.it)), stOf(t1), -1);
+      });
+      c.dst = d; c.other = ss.other; c.bst = ss.st;
+    });
+    var gst = [0, 0, 0, 0, 0];
+    gear.forEach(function (g) { gst = stAdd(gst, stOf(g.it)); });
+    (rows.setPick || []).forEach(function (c) { gst = stAdd(gst, c.bst); });
     rows.gear = { items: gear, sets: rows.setPick || [], bonus: bonus,
-                  total: gear.reduce(function (t, g) { return t + g.it.v; }, 0) + bonus };
+                  total: gear.reduce(function (t, g) { return t + g.it.v; }, 0) + bonus, st: gst };
     rows.push({ slot: "Two-hand", items: top(TWOH, n) });
     rows.push({ slot: "Main hand / one-hand", items: top(MAIN, n) });
     rows.push({ slot: "Off hand / shield", items: top(OFF, n) });
@@ -450,7 +474,7 @@
   }
 
   var api = { parseExport: parseExport, bestInBags: bestInBags, value: value, bisList: bisList, extrasValues: extrasValues,
-              procValue: procValue, procList: procList, cdModel: cdModel, setBonusValue: bonusValue };
+              procValue: procValue, procList: procList, cdModel: cdModel, setBonusValue: bonusValue, stOf: stOf, stAdd: stAdd };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ForeverBags = api;
 })(this);
